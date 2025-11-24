@@ -1,4 +1,4 @@
-# Sistema de Gestión - Proyecto TypeScript
+# ERP - Sistema de Gestión Empresarial
 
 Sistema web completo con frontend (HTML5, CSS, Bootstrap, JavaScript) y backend (TypeScript, Express, TypeORM, SQLite).
 
@@ -90,7 +90,7 @@ Estas credenciales se crean automáticamente la primera vez que se ejecuta el se
 ## 🗂️ Estructura del Proyecto
 
 ```
-proyecto-typescript/
+erp/
 ├── src/
 │   ├── config/
 │   │   └── database.ts          # Configuración de base de datos
