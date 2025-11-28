@@ -10,11 +10,17 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+// Configuración para manejar host e instancia
+const dbHost = process.env.DB_HOST || 'localhost';
+const hostParts = dbHost.split('\\');
+const server = hostParts[0];
+const instance = hostParts[1];
+
 export const AppDataSource = new DataSource({
   type: process.env.DB_TYPE as 'sqlite' | 'postgres' | 'mssql',
   database: process.env.DB_DATABASE || './database.sqlite',
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '1433'),
+  host: server,
+  port: instance ? undefined : parseInt(process.env.DB_PORT || '1433'),
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   synchronize: true, // En producción usar migraciones
@@ -22,9 +28,12 @@ export const AppDataSource = new DataSource({
   entities: [User, Nomina, Finanza, Cliente, Factura, ConceptoFactura, CatalogoSAT],
   migrations: ['src/migrations/**/*.ts'],
   subscribers: ['src/subscribers/**/*.ts'],
-  options: {
-    encrypt: process.env.DB_ENCRYPT === 'true', // Para Azure SQL
-    trustServerCertificate: process.env.DB_TRUST_CERTIFICATE === 'true', // Para desarrollo local
+  extra: {
+    options: {
+      encrypt: process.env.DB_ENCRYPT === 'true',
+      trustServerCertificate: process.env.DB_TRUST_CERTIFICATE === 'true',
+      ...(instance && { instanceName: instance }),
+    },
   },
 });
 
@@ -47,7 +56,7 @@ export const initializeDatabase = async (): Promise<void> => {
         nombre: 'Administrador',
       });
       await userRepository.save(newUser);
-      console.log('✅ Usuario administrador creado (admin/admin123)');
+      console.log('Usuario administrador creado (admin/admin123)');
     }
 
     // Inicializar catálogo SAT con códigos comunes
@@ -94,10 +103,10 @@ export const initializeDatabase = async (): Promise<void> => {
           await catalogoRepository.save(catalogoRepository.create(codigo));
         }
       }
-      console.log('✅ Catálogo SAT inicializado');
+      console.log('Catálogo SAT inicializado');
     }
   } catch (error) {
-    console.error('❌ Error al conectar con la base de datos:', error);
+    console.error('Error al conectar con la base de datos:', error);
     throw error;
   }
 };

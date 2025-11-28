@@ -3,606 +3,505 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestión</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="styles.css">
+    <title>ERP - Sistema de Gestión Empresarial</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Flowbite -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.0/flowbite.min.css" rel="stylesheet" />
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Iconos Lucide (modernos y ligeros) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {"50":"#eff6ff","100":"#dbeafe","200":"#bfdbfe","300":"#93c5fd","400":"#60a5fa","500":"#3b82f6","600":"#2563eb","700":"#1d4ed8","800":"#1e40af","900":"#1e3a8a","950":"#172554"}
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
 </head>
-<body>
-    <!-- Página de Login -->
-    <div id="loginPage" class="login-container">
-        <div class="login-card">
-            <div class="text-center mb-4">
-                <i class="bi bi-shield-lock-fill login-icon"></i>
-                <h2 class="mt-3">Inicio de Sesión</h2>
+<body class="bg-gray-50" x-data="appData()" x-init="init()">
+
+    <script>
+        function appData() {
+            return {
+                loggedIn: false,
+                currentSection: 'dashboard',
+                username: '',
+                userData: null,
+
+                // Inicialización
+                init() {
+                    // Verificar si hay token guardado
+                    const token = localStorage.getItem('token');
+                    if (token) {
+                        this.userData = JSON.parse(localStorage.getItem('user') || '{}');
+                        this.username = this.userData.nombre || this.userData.username || 'Usuario';
+                        this.loggedIn = true;
+                    }
+
+                    // Reiniciar iconos
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                // Login
+                async handleLogin(event) {
+                    event.preventDefault();
+
+                    const formData = new FormData(event.target);
+                    const username = formData.get('username');
+                    const password = formData.get('password');
+
+                    if (!username || !password) {
+                        alert('Por favor, complete todos los campos');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('http://localhost:3000/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password })
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(data.message || 'Error al iniciar sesión');
+                        }
+
+                        localStorage.setItem('token', data.token);
+                        localStorage.setItem('user', JSON.stringify(data.user));
+
+                        this.userData = data.user;
+                        this.username = data.user.nombre || data.user.username || 'Usuario';
+                        this.loggedIn = true;
+
+                        this.$nextTick(() => lucide.createIcons());
+
+                    } catch (error) {
+                        alert(error.message || 'Error al iniciar sesión');
+                    }
+                },
+
+                // Logout
+                handleLogout() {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    this.loggedIn = false;
+                    this.userData = null;
+                    this.username = '';
+                    this.currentSection = 'dashboard';
+                }
+            }
+        }
+    </script>
+
+    <!-- ============================================ -->
+    <!-- LOGIN PAGE -->
+    <!-- ============================================ -->
+    <div x-show="!loggedIn" x-cloak class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8">
+            <!-- Logo y Título -->
+            <div class="text-center">
+                <div class="mx-auto h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-xl">
+                    <i data-lucide="building-2" class="h-12 w-12 text-blue-600"></i>
+                </div>
+                <h2 class="mt-6 text-3xl font-bold text-white">
+                    Sistema ERP
+                </h2>
+                <p class="mt-2 text-sm text-blue-100">
+                    Gestión Empresarial Integral
+                </p>
             </div>
-            <form id="loginForm">
-                <div class="mb-3">
-                    <label for="username" class="form-label">Usuario</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
-                        <input type="text" class="form-control" id="username" placeholder="Ingrese su usuario" required>
+
+            <!-- Formulario de Login -->
+            <div class="bg-white rounded-2xl shadow-2xl p-8">
+                <form id="loginForm" @submit="handleLogin" class="space-y-6">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+                            Usuario
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i data-lucide="user" class="h-5 w-5 text-gray-400"></i>
+                            </div>
+                            <input
+                                type="text"
+                                id="username"
+                                name="username"
+                                required
+                                class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent transition duration-200 ease-in-out"
+                                placeholder="admin">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                            Contraseña
+                        </label>
+                        <div class="relative" x-data="{ showPassword: false }">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i data-lucide="lock" class="h-5 w-5 text-gray-400"></i>
+                            </div>
+                            <input
+                                :type="showPassword ? 'text' : 'password'"
+                                id="password"
+                                name="password"
+                                required
+                                class="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent transition duration-200 ease-in-out"
+                                placeholder="••••••••">
+                            <button
+                                type="button"
+                                @click="showPassword = !showPassword"
+                                class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                                <i :data-lucide="showPassword ? 'eye-off' : 'eye'" class="h-5 w-5"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input
+                                id="remember-me"
+                                name="remember-me"
+                                type="checkbox"
+                                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                            <label for="remember-me" class="ml-2 block text-sm text-gray-700">
+                                Recordarme
+                            </label>
+                        </div>
+
+                        <div class="text-sm">
+                            <a href="#" class="font-medium text-blue-600 hover:text-blue-500 transition">
+                                ¿Olvidaste tu contraseña?
+                            </a>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button
+                            type="submit"
+                            class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200 ease-in-out transform hover:scale-[1.02]">
+                            <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                                <i data-lucide="log-in" class="h-5 w-5 text-blue-300 group-hover:text-blue-100"></i>
+                            </span>
+                            Iniciar Sesión
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Divider -->
+                <div class="mt-6">
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-gray-300"></div>
+                        </div>
+                        <div class="relative flex justify-center text-sm">
+                            <span class="px-2 bg-white text-gray-500">
+                                Usuario por defecto: admin / admin123
+                            </span>
+                        </div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label for="password" class="form-label">Contraseña</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
-                        <input type="password" class="form-control" id="password" placeholder="Ingrese su contraseña" required>
-                    </div>
-                </div>
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-lg">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión
-                    </button>
-                </div>
-            </form>
+            </div>
+
+            <!-- Footer -->
+            <p class="text-center text-sm text-blue-100">
+                © 2025 ERP Sistema. Todos los derechos reservados.
+            </p>
         </div>
     </div>
 
-    <!-- Dashboard (oculto inicialmente) -->
-    <div id="dashboardPage" class="d-none">
+    <!-- ============================================ -->
+    <!-- DASHBOARD PAGE -->
+    <!-- ============================================ -->
+    <div x-show="loggedIn" x-cloak class="min-h-screen bg-gray-50">
+
         <!-- Sidebar -->
-        <nav id="sidebar" class="sidebar">
-            <div class="sidebar-header">
-                <h4><i class="bi bi-building me-2"></i>Sistema</h4>
+        <aside
+            x-data="{ open: true }"
+            :class="open ? 'translate-x-0' : '-translate-x-full'"
+            class="fixed top-0 left-0 z-40 w-64 h-screen transition-transform duration-300 bg-gradient-to-b from-gray-900 to-gray-800 border-r border-gray-700"
+            aria-label="Sidebar">
+
+            <!-- Logo Header -->
+            <div class="h-16 px-6 flex items-center justify-between border-b border-gray-700">
+                <div class="flex items-center space-x-3">
+                    <div class="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="building-2" class="h-6 w-6 text-white"></i>
+                    </div>
+                    <span class="text-xl font-bold text-white">ERP</span>
+                </div>
             </div>
-            <ul class="sidebar-menu">
-                <li>
-                    <a href="#" class="menu-item" data-section="nomina">
-                        <i class="bi bi-cash-stack me-2"></i>Nómina
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="menu-item" data-section="finanzas">
-                        <i class="bi bi-graph-up-arrow me-2"></i>Finanzas
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="menu-item" data-section="clientes">
-                        <i class="bi bi-people-fill me-2"></i>Clientes
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="menu-item" data-section="facturas">
-                        <i class="bi bi-receipt me-2"></i>Facturas
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="menu-item" data-section="cartera">
-                        <i class="bi bi-wallet2 me-2"></i>Cartera
-                    </a>
-                </li>
-            </ul>
-            <div class="sidebar-footer">
-                <button id="logoutBtn" class="btn btn-outline-light w-100">
-                    <i class="bi bi-box-arrow-right me-2"></i>Cerrar Sesión
-                </button>
+
+            <!-- Navegación -->
+            <div class="h-full px-3 py-4 overflow-y-auto">
+                <ul class="space-y-2 font-medium">
+                    <li>
+                        <a href="#"
+                           @click.prevent="currentSection = 'dashboard'"
+                           :class="currentSection === 'dashboard' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'"
+                           class="flex items-center p-3 rounded-lg transition-colors group">
+                            <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                            <span class="ml-3">Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#"
+                           @click.prevent="currentSection = 'facturas'"
+                           :class="currentSection === 'facturas' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'"
+                           class="flex items-center p-3 rounded-lg transition-colors group">
+                            <i data-lucide="file-text" class="w-5 h-5"></i>
+                            <span class="ml-3">Facturas</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#"
+                           @click.prevent="currentSection = 'clientes'"
+                           :class="currentSection === 'clientes' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'"
+                           class="flex items-center p-3 rounded-lg transition-colors group">
+                            <i data-lucide="users" class="w-5 h-5"></i>
+                            <span class="ml-3">Clientes</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#"
+                           @click.prevent="currentSection = 'finanzas'"
+                           :class="currentSection === 'finanzas' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'"
+                           class="flex items-center p-3 rounded-lg transition-colors group">
+                            <i data-lucide="trending-up" class="w-5 h-5"></i>
+                            <span class="ml-3">Finanzas</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#"
+                           @click.prevent="currentSection = 'nomina'"
+                           :class="currentSection === 'nomina' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'"
+                           class="flex items-center p-3 rounded-lg transition-colors group">
+                            <i data-lucide="wallet" class="w-5 h-5"></i>
+                            <span class="ml-3">Nómina</span>
+                        </a>
+                    </li>
+
+                    <!-- Divider -->
+                    <li class="pt-4 mt-4 space-y-2 border-t border-gray-700">
+                        <a href="#"
+                           @click.prevent="currentSection = 'configuracion'"
+                           :class="currentSection === 'configuracion' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'"
+                           class="flex items-center p-3 rounded-lg transition-colors group">
+                            <i data-lucide="settings" class="w-5 h-5"></i>
+                            <span class="ml-3">Configuración</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Logout Button -->
+                <div class="absolute bottom-4 left-0 right-0 px-3">
+                    <button
+                        @click="handleLogout"
+                        class="w-full flex items-center justify-center p-3 text-gray-300 rounded-lg hover:bg-red-600 hover:text-white transition-colors">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                        <span class="ml-3">Cerrar Sesión</span>
+                    </button>
+                </div>
             </div>
-        </nav>
+        </aside>
 
         <!-- Main Content -->
-        <div class="main-content">
+        <div class="p-4 sm:ml-64">
+
             <!-- Top Bar -->
-            <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
-                <div class="container-fluid">
-                    <button id="sidebarToggle" class="btn btn-link">
-                        <i class="bi bi-list fs-4"></i>
-                    </button>
-                    <span class="navbar-brand mb-0 h1">Sistema de Gestión</span>
-                    <div class="ms-auto">
-                        <span class="text-muted">
-                            <i class="bi bi-person-circle me-2"></i>
-                            <span id="currentUser">Usuario</span>
-                        </span>
+            <nav class="bg-white border-b border-gray-200 px-4 py-3 rounded-lg mb-4 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <button
+                            @click="$refs.sidebar.classList.toggle('-translate-x-full')"
+                            type="button"
+                            class="inline-flex items-center p-2 text-sm text-gray-500 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200">
+                            <i data-lucide="menu" class="w-6 h-6"></i>
+                        </button>
+                        <h1 class="ml-4 text-xl font-semibold text-gray-800">
+                            Sistema de Gestión Empresarial
+                        </h1>
+                    </div>
+
+                    <div class="flex items-center space-x-4">
+                        <!-- Notifications -->
+                        <button class="p-2 text-gray-500 rounded-lg hover:bg-gray-100 relative">
+                            <i data-lucide="bell" class="w-5 h-5"></i>
+                            <span class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-500 rounded-full">3</span>
+                        </button>
+
+                        <!-- User Menu -->
+                        <div class="flex items-center space-x-2">
+                            <div class="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                                <span x-text="username ? username.charAt(0).toUpperCase() : 'U'"></span>
+                            </div>
+                            <span class="text-sm font-medium text-gray-700" x-text="username || 'Usuario'"></span>
+                        </div>
                     </div>
                 </div>
             </nav>
 
             <!-- Content Area -->
-            <div class="content-area">
-                <!-- Sección Nómina -->
-                <div id="nominaSection" class="content-section">
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Nómina</h5>
+            <div x-data="{ currentSection: 'dashboard' }">
+
+                <!-- Dashboard Section -->
+                <div x-show="currentSection === 'dashboard'" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Dashboard</h2>
+
+                    <!-- Stats Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <!-- Card 1 -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600">Facturas Emitidas</p>
+                                    <p class="text-3xl font-bold text-gray-900 mt-2">248</p>
+                                    <p class="text-sm text-green-600 mt-2">↑ 12% vs mes anterior</p>
+                                </div>
+                                <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="file-text" class="w-6 h-6 text-blue-600"></i>
+                                </div>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <p class="text-muted">Bienvenido a la sección de Nómina. Aquí podrás gestionar la información de nómina de los empleados.</p>
-                            <div class="row mt-4">
-                                <div class="col-md-4">
-                                    <div class="card text-center">
-                                        <div class="card-body">
-                                            <i class="bi bi-people-fill fs-1 text-primary"></i>
-                                            <h6 class="mt-2">Empleados</h6>
-                                        </div>
-                                    </div>
+
+                        <!-- Card 2 -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600">Clientes Activos</p>
+                                    <p class="text-3xl font-bold text-gray-900 mt-2">87</p>
+                                    <p class="text-sm text-green-600 mt-2">↑ 5% vs mes anterior</p>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center">
-                                        <div class="card-body">
-                                            <i class="bi bi-calendar-check-fill fs-1 text-success"></i>
-                                            <h6 class="mt-2">Períodos</h6>
-                                        </div>
-                                    </div>
+                                <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="users" class="w-6 h-6 text-green-600"></i>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center">
-                                        <div class="card-body">
-                                            <i class="bi bi-file-earmark-text-fill fs-1 text-info"></i>
-                                            <h6 class="mt-2">Reportes</h6>
-                                        </div>
-                                    </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 3 -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600">Ingresos Totales</p>
+                                    <p class="text-3xl font-bold text-gray-900 mt-2">$845K</p>
+                                    <p class="text-sm text-green-600 mt-2">↑ 18% vs mes anterior</p>
                                 </div>
+                                <div class="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="trending-up" class="w-6 h-6 text-purple-600"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 4 -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600">Pendientes de Pago</p>
+                                    <p class="text-3xl font-bold text-gray-900 mt-2">$124K</p>
+                                    <p class="text-sm text-red-600 mt-2">↓ 8% vs mes anterior</p>
+                                </div>
+                                <div class="h-12 w-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="alert-circle" class="w-6 h-6 text-orange-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200 mt-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Actividad Reciente</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                                <div class="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <i data-lucide="file-plus" class="w-5 h-5 text-blue-600"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium text-gray-900">Nueva factura creada</p>
+                                    <p class="text-xs text-gray-500">Cliente: ABC Empresa S.A. - $15,000</p>
+                                </div>
+                                <span class="text-xs text-gray-400">Hace 2 horas</span>
+                            </div>
+                            <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                                <div class="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center">
+                                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium text-gray-900">Pago recibido</p>
+                                    <p class="text-xs text-gray-500">Factura #1234 - $8,500</p>
+                                </div>
+                                <span class="text-xs text-gray-400">Hace 5 horas</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sección Finanzas -->
-                <div id="finanzasSection" class="content-section d-none">
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-success text-white">
-                            <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Finanzas</h5>
-                        </div>
-                        <div class="card-body">
-                            <p class="text-muted">Bienvenido a la sección de Finanzas. Aquí podrás gestionar la información financiera de la empresa.</p>
-                            <div class="row mt-4">
-                                <div class="col-md-4">
-                                    <div class="card text-center">
-                                        <div class="card-body">
-                                            <i class="bi bi-wallet-fill fs-1 text-success"></i>
-                                            <h6 class="mt-2">Ingresos</h6>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center">
-                                        <div class="card-body">
-                                            <i class="bi bi-cart-fill fs-1 text-danger"></i>
-                                            <h6 class="mt-2">Gastos</h6>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center">
-                                        <div class="card-body">
-                                            <i class="bi bi-pie-chart-fill fs-1 text-warning"></i>
-                                            <h6 class="mt-2">Análisis</h6>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                <!-- Otras secciones (Facturas, Clientes, etc.) -->
+                <div x-show="currentSection === 'facturas'" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Módulo de Facturas</h2>
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <p class="text-gray-600">Contenido del módulo de facturas en desarrollo...</p>
                     </div>
                 </div>
 
-                <!-- Sección Clientes -->
-                <div id="clientesSection" class="content-section d-none">
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0"><i class="bi bi-people-fill me-2"></i>Clientes</h5>
-                            <button class="btn btn-light btn-sm" onclick="mostrarModalCliente()">
-                                <i class="bi bi-plus-circle me-1"></i>Nuevo Cliente
-                            </button>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-hover" id="tablaClientes">
-                                    <thead>
-                                        <tr>
-                                            <th>Nombre</th>
-                                            <th>RFC</th>
-                                            <th>Razón Social</th>
-                                            <th>Email</th>
-                                            <th>Teléfono</th>
-                                            <th>Estado</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="clientesBody">
-                                        <tr>
-                                            <td colspan="7" class="text-center">Cargando clientes...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                <div x-show="currentSection === 'clientes'" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Módulo de Clientes</h2>
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <p class="text-gray-600">Contenido del módulo de clientes en desarrollo...</p>
                     </div>
                 </div>
 
-                <!-- Sección Facturas -->
-                <div id="facturasSection" class="content-section d-none">
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Facturas</h5>
-                            <button class="btn btn-dark btn-sm" onclick="mostrarModalFactura()">
-                                <i class="bi bi-plus-circle me-1"></i>Nueva Factura
-                            </button>
-                        </div>
-                        <div class="card-body">
-                            <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <select class="form-select" id="filtroEstadoFactura">
-                                        <option value="">Todos los estados</option>
-                                        <option value="borrador">Borrador</option>
-                                        <option value="timbrada">Timbrada</option>
-                                        <option value="cancelada">Cancelada</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <select class="form-select" id="filtroEstadoPago">
-                                        <option value="">Todos los pagos</option>
-                                        <option value="pendiente">Pendiente</option>
-                                        <option value="parcial">Parcial</option>
-                                        <option value="pagada">Pagada</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <button class="btn btn-primary w-100" onclick="cargarFacturas()">
-                                        <i class="bi bi-search me-1"></i>Filtrar
-                                    </button>
-                                </div>
-                                <div class="col-md-3">
-                                    <button class="btn btn-success w-100" onclick="cargarKPIs()">
-                                        <i class="bi bi-graph-up me-1"></i>Ver KPIs
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-hover" id="tablaFacturas">
-                                    <thead>
-                                        <tr>
-                                            <th>Folio</th>
-                                            <th>Cliente</th>
-                                            <th>Fecha Emisión</th>
-                                            <th>Total</th>
-                                            <th>Estado Factura</th>
-                                            <th>Estado Pago</th>
-                                            <th>Saldo</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="facturasBody">
-                                        <tr>
-                                            <td colspan="8" class="text-center">Cargando facturas...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                <div x-show="currentSection === 'finanzas'" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Módulo de Finanzas</h2>
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <p class="text-gray-600">Contenido del módulo de finanzas en desarrollo...</p>
                     </div>
                 </div>
 
-                <!-- Sección Cartera -->
-                <div id="carteraSection" class="content-section d-none">
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-danger text-white">
-                            <h5 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Cartera de Cuentas por Cobrar</h5>
-                        </div>
-                        <div class="card-body">
-                            <!-- KPIs -->
-                            <div class="row mb-4" id="kpisCartera">
-                                <div class="col-md-4">
-                                    <div class="card text-center bg-primary text-white">
-                                        <div class="card-body">
-                                            <h3 id="totalPorCobrar">$0.00</h3>
-                                            <p class="mb-0">Total por Cobrar</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center bg-danger text-white">
-                                        <div class="card-body">
-                                            <h3 id="totalVencido">$0.00</h3>
-                                            <p class="mb-0">Vencido</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center bg-success text-white">
-                                        <div class="card-body">
-                                            <h3 id="totalVigente">$0.00</h3>
-                                            <p class="mb-0">Vigente</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Facturas Vencidas -->
-                            <div class="card mb-3">
-                                <div class="card-header bg-danger text-white">
-                                    <h6 class="mb-0">Facturas Vencidas</h6>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th>Folio</th>
-                                                    <th>Cliente</th>
-                                                    <th>Fecha Vencimiento</th>
-                                                    <th>Saldo</th>
-                                                    <th>Días Vencidos</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="facturasVencidasBody">
-                                                <tr>
-                                                    <td colspan="5" class="text-center">Cargando...</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Por Cliente -->
-                            <div class="card">
-                                <div class="card-header bg-info text-white">
-                                    <h6 class="mb-0">Cartera por Cliente</h6>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Cliente</th>
-                                                    <th>RFC</th>
-                                                    <th>Total Adeudado</th>
-                                                    <th>Facturas</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="carteraPorClienteBody">
-                                                <tr>
-                                                    <td colspan="4" class="text-center">Cargando...</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                <div x-show="currentSection === 'nomina'" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Módulo de Nómina</h2>
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <p class="text-gray-600">Contenido del módulo de nómina en desarrollo...</p>
                     </div>
                 </div>
+
+                <div x-show="currentSection === 'configuracion'" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Configuración</h2>
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <p class="text-gray-600">Configuración del sistema en desarrollo...</p>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
 
-    <!-- Modal Cliente -->
-    <div class="modal fade" id="modalCliente" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalClienteTitle">Nuevo Cliente</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="formCliente" novalidate>
-                        <input type="hidden" id="clienteId">
-                        <div class="mb-3">
-                            <label class="form-label">Nombre *</label>
-                            <input type="text" class="form-control" id="clienteNombre" required 
-                                   minlength="2" maxlength="100"
-                                   oninput="validarCampoRequerido(this)">
-                            <div class="invalid-feedback">El nombre es requerido y debe tener al menos 2 caracteres.</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">RFC *</label>
-                            <input type="text" class="form-control text-uppercase" id="clienteRFC" required 
-                                   maxlength="13" pattern="[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}"
-                                   oninput="validarRFC(this)" placeholder="Ej: ABC123456789 o XEXX010101000">
-                            <small class="form-text text-muted">Formato: Para RFC mexicano (12-13 caracteres) o extranjero/genérico (12 caracteres)</small>
-                            <div class="invalid-feedback" id="rfcError">RFC inválido. Use formato mexicano (ABC123456789) o extranjero/genérico (XEXX010101000).</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Razón Social *</label>
-                            <input type="text" class="form-control" id="clienteRazonSocial" required 
-                                   minlength="3" maxlength="200"
-                                   oninput="validarCampoRequerido(this)">
-                            <div class="invalid-feedback">La razón social es requerida y debe tener al menos 3 caracteres.</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Dirección</label>
-                            <input type="text" class="form-control" id="clienteDireccion" maxlength="255">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Teléfono</label>
-                            <input type="tel" class="form-control" id="clienteTelefono" 
-                                   pattern="[0-9]{10,15}" maxlength="15"
-                                   placeholder="Solo números (10-15 dígitos)"
-                                   autocomplete="tel">
-                            <small class="form-text text-muted">Solo se permiten números (10-15 dígitos)</small>
-                            <div class="invalid-feedback">El teléfono solo debe contener números (10-15 dígitos).</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" id="clienteEmail" 
-                                   maxlength="100" pattern="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-                                   oninput="validarEmail(this)" placeholder="ejemplo@correo.com">
-                            <div class="invalid-feedback">Ingrese un formato de correo electrónico válido.</div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="guardarCliente()">Guardar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Factura -->
-    <div class="modal fade" id="modalFactura" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalFacturaTitle">Nueva Factura</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
-                    <form id="formFactura">
-                        <input type="hidden" id="facturaId">
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label">Cliente *</label>
-                                <select class="form-select" id="facturaClienteId" required></select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Serie *</label>
-                                <input type="text" class="form-control" id="facturaSerie" value="A" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Folio</label>
-                                <input type="text" class="form-control" id="facturaFolio" readonly placeholder="Se genera automáticamente">
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Fecha Emisión *</label>
-                                <input type="date" class="form-control" id="facturaFechaEmision" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Fecha Vencimiento *</label>
-                                <input type="date" class="form-control" id="facturaFechaVencimiento" required>
-                            </div>
-                        </div>
-
-                        <!-- Conceptos -->
-                        <div class="card mb-3">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h6 class="mb-0">Conceptos</h6>
-                                <button type="button" class="btn btn-sm btn-success" onclick="agregarConcepto()">
-                                    <i class="bi bi-plus-circle me-1"></i>Agregar Concepto
-                                </button>
-                            </div>
-                            <div class="card-body">
-                                <div id="conceptosContainer">
-                                    <!-- Los conceptos se agregarán dinámicamente aquí -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Totales -->
-                        <div class="row mb-3">
-                            <div class="col-md-3 offset-md-9">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <div class="d-flex justify-content-between mb-2">
-                                            <strong>Subtotal:</strong>
-                                            <span id="facturaSubtotal">$0.00</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between mb-2">
-                                            <strong>IVA:</strong>
-                                            <span id="facturaIva">$0.00</span>
-                                        </div>
-                                        <hr>
-                                        <div class="d-flex justify-content-between">
-                                            <strong>Total:</strong>
-                                            <strong><span id="facturaTotal">$0.00</span></strong>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Observaciones</label>
-                            <textarea class="form-control" id="facturaObservaciones" rows="3"></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="guardarFactura()">Guardar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Template para concepto (oculto) -->
-    <template id="templateConcepto">
-        <div class="concepto-item card mb-3" data-concepto-index="">
-            <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="mb-0">Concepto <span class="concepto-numero">1</span></h6>
-                <button type="button" class="btn btn-sm btn-danger" onclick="eliminarConcepto(this)">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-            <div class="row">
-                <div class="col-md-4 mb-2">
-                    <label class="form-label">Código SAT *</label>
-                    <select class="form-select concepto-codigo-sat" required onchange="actualizarDescripcionConcepto(this)">
-                        <option value="">Seleccione código SAT</option>
-                    </select>
-                </div>
-                <div class="col-md-8 mb-2">
-                    <label class="form-label">Descripción *</label>
-                    <input type="text" class="form-control concepto-descripcion" required>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">Cantidad *</label>
-                    <input type="number" class="form-control concepto-cantidad" step="0.01" min="0.01" required onchange="calcularConcepto(this)">
-                </div>
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">Precio Unitario *</label>
-                    <input type="number" class="form-control concepto-precio-unitario" step="0.01" min="0" required onchange="calcularConcepto(this)">
-                </div>
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">Importe</label>
-                    <input type="number" class="form-control concepto-importe" step="0.01" readonly>
-                </div>
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">Tiene Impuesto</label>
-                    <select class="form-select concepto-tiene-impuesto" onchange="toggleImpuestoConcepto(this)">
-                        <option value="false">No</option>
-                        <option value="true">Sí</option>
-                    </select>
-                </div>
-                <div class="col-md-2 mb-2 concepto-impuesto-fields" style="display: none;">
-                    <label class="form-label">Tipo Impuesto</label>
-                    <select class="form-select concepto-tipo-impuesto" onchange="calcularConcepto(this)">
-                        <option value="002">IVA</option>
-                        <option value="003">IEPS</option>
-                    </select>
-                </div>
-                <div class="col-md-2 mb-2 concepto-impuesto-fields" style="display: none;">
-                    <label class="form-label">Tasa (%)</label>
-                    <input type="number" class="form-control concepto-tasa-impuesto" step="0.01" value="16" min="0" max="100" onchange="calcularConcepto(this)">
-                </div>
-            </div>
-            <div class="row concepto-impuesto-fields" style="display: none;">
-                <div class="col-md-2 offset-md-8">
-                    <label class="form-label">Importe Impuesto</label>
-                    <input type="number" class="form-control concepto-importe-impuesto" step="0.01" readonly>
-                </div>
-            </div>
-            </div>
-        </div>
-    </template>
-
-    <!-- Modal KPIs -->
-    <div class="modal fade" id="modalKPIs" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">KPIs de Facturación</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="kpisContent">
-                    <div class="text-center">Cargando KPIs...</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Custom JS -->
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.0/flowbite.min.js"></script>
     <script src="script.js"></script>
+    <script>
+        // Inicializar iconos Lucide
+        lucide.createIcons();
+
+        // Re-crear iconos después de cambios dinámicos
+        document.addEventListener('alpine:initialized', () => {
+            setInterval(() => lucide.createIcons(), 1000);
+        });
+    </script>
 </body>
 </html>
-
