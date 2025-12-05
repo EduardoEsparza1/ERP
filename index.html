@@ -74,16 +74,32 @@
                     claveUnidad: 'E48',
                     valorUnitario: 0,
                     descuento: 0,
-                    objetoImpuestoClave: '02'
+                    objetoImpuestoClave: '02',
+                    impuestos: [] // Array de impuestos para este concepto
                 },
 
-                // Totales
+                // Impuesto temporal (para agregar a concepto)
+                impuestoTemp: {
+                    tipo: '002', // IVA por defecto
+                    tipoFactor: 'Tasa',
+                    tasaOCuota: 0.16,
+                    esRetencion: false
+                },
+
+                // Totales detallados
                 totales: {
                     subtotal: 0,
                     descuento: 0,
-                    impuestos: 0,
+                    impuestosTrasladados: [],
+                    impuestosRetenidos: [],
+                    totalTrasladados: 0,
+                    totalRetenidos: 0,
                     total: 0
                 },
+
+                // Modal para gestionar impuestos
+                mostrarModalImpuestos: false,
+                conceptoEditandoImpuestos: null,
 
                 // Inicialización
                 init() {
@@ -179,6 +195,70 @@
                     }
                 },
 
+                // Proponer impuestos automáticamente según objeto de impuesto
+                proponerImpuestos(objetoImpuestoClave) {
+                    const impuestos = [];
+
+                    // 01 - No objeto de impuesto → Sin impuestos
+                    if (objetoImpuestoClave === '01') {
+                        return impuestos;
+                    }
+
+                    // 02 - Sí objeto de impuesto → Proponer IVA 16% trasladado
+                    if (objetoImpuestoClave === '02') {
+                        impuestos.push({
+                            tipo: '002', // IVA
+                            tipoFactor: 'Tasa',
+                            tasaOCuota: 0.16,
+                            esRetencion: false,
+                            base: 0, // Se calculará después
+                            importe: 0
+                        });
+                    }
+
+                    // 03 - Sí objeto del impuesto y no obligado al desglose → Sin impuestos visibles
+                    if (objetoImpuestoClave === '03') {
+                        return impuestos;
+                    }
+
+                    // 04 - Sí objeto del impuesto y no causa impuesto → Exento
+                    if (objetoImpuestoClave === '04') {
+                        impuestos.push({
+                            tipo: '002', // IVA
+                            tipoFactor: 'Exento',
+                            tasaOCuota: 0,
+                            esRetencion: false,
+                            base: 0,
+                            importe: 0
+                        });
+                    }
+
+                    return impuestos;
+                },
+
+                // Calcular impuestos de un concepto
+                calcularImpuestosConcepto(concepto) {
+                    const base = (concepto.cantidad * concepto.valorUnitario) - (concepto.descuento || 0);
+
+                    concepto.impuestos.forEach(impuesto => {
+                        impuesto.base = base;
+
+                        // Calcular importe según tipo de factor
+                        if (impuesto.tipoFactor === 'Tasa') {
+                            impuesto.importe = base * impuesto.tasaOCuota;
+                        } else if (impuesto.tipoFactor === 'Cuota') {
+                            impuesto.importe = concepto.cantidad * impuesto.tasaOCuota;
+                        } else if (impuesto.tipoFactor === 'Exento') {
+                            impuesto.importe = 0;
+                        }
+
+                        // Redondear a 2 decimales
+                        impuesto.importe = Math.round(impuesto.importe * 100) / 100;
+                    });
+
+                    return concepto;
+                },
+
                 // Agregar concepto
                 agregarConcepto() {
                     if (!this.conceptoTemp.claveProductoServicio || !this.conceptoTemp.descripcion ||
@@ -187,12 +267,22 @@
                         return;
                     }
 
-                    const importe = this.conceptoTemp.cantidad * this.conceptoTemp.valorUnitario;
+                    // Proponer impuestos automáticamente
+                    if (this.conceptoTemp.impuestos.length === 0) {
+                        this.conceptoTemp.impuestos = this.proponerImpuestos(this.conceptoTemp.objetoImpuestoClave);
+                    }
 
-                    this.factura.conceptos.push({
+                    const importe = this.conceptoTemp.cantidad * this.conceptoTemp.valorUnitario;
+                    const concepto = {
                         ...this.conceptoTemp,
-                        importe: importe - this.conceptoTemp.descuento
-                    });
+                        importe: importe - (this.conceptoTemp.descuento || 0),
+                        impuestos: [...this.conceptoTemp.impuestos] // Clonar array
+                    };
+
+                    // Calcular impuestos del concepto
+                    this.calcularImpuestosConcepto(concepto);
+
+                    this.factura.conceptos.push(concepto);
 
                     // Limpiar formulario temporal
                     this.conceptoTemp = {
@@ -202,7 +292,8 @@
                         claveUnidad: 'E48',
                         valorUnitario: 0,
                         descuento: 0,
-                        objetoImpuestoClave: '02'
+                        objetoImpuestoClave: '02',
+                        impuestos: []
                     };
 
                     this.calcularTotales();
@@ -214,26 +305,176 @@
                     this.calcularTotales();
                 },
 
-                // Calcular totales (IVA 16%)
+                // Calcular totales con todos los impuestos
                 calcularTotales() {
                     let subtotal = 0;
                     let descuento = 0;
+                    const impuestosTrasladados = {}; // { tipo: { tasaOCuota: importe } }
+                    const impuestosRetenidos = {};
 
                     this.factura.conceptos.forEach(c => {
                         const importeBruto = c.cantidad * c.valorUnitario;
                         subtotal += importeBruto;
                         descuento += c.descuento || 0;
+
+                        // Sumar impuestos por concepto
+                        if (c.impuestos && c.impuestos.length > 0) {
+                            c.impuestos.forEach(imp => {
+                                const key = `${imp.tipo}_${imp.tipoFactor}_${imp.tasaOCuota}`;
+
+                                if (imp.esRetencion) {
+                                    if (!impuestosRetenidos[key]) {
+                                        impuestosRetenidos[key] = {
+                                            tipo: imp.tipo,
+                                            tipoFactor: imp.tipoFactor,
+                                            tasaOCuota: imp.tasaOCuota,
+                                            base: 0,
+                                            importe: 0
+                                        };
+                                    }
+                                    impuestosRetenidos[key].base += imp.base;
+                                    impuestosRetenidos[key].importe += imp.importe;
+                                } else {
+                                    if (!impuestosTrasladados[key]) {
+                                        impuestosTrasladados[key] = {
+                                            tipo: imp.tipo,
+                                            tipoFactor: imp.tipoFactor,
+                                            tasaOCuota: imp.tasaOCuota,
+                                            base: 0,
+                                            importe: 0
+                                        };
+                                    }
+                                    impuestosTrasladados[key].base += imp.base;
+                                    impuestosTrasladados[key].importe += imp.importe;
+                                }
+                            });
+                        }
                     });
 
-                    const baseImponible = subtotal - descuento;
-                    const iva = baseImponible * 0.16;
+                    // Convertir objetos a arrays y redondear
+                    const arrayTrasladados = Object.values(impuestosTrasladados).map(imp => ({
+                        ...imp,
+                        base: Math.round(imp.base * 100) / 100,
+                        importe: Math.round(imp.importe * 100) / 100
+                    }));
+
+                    const arrayRetenidos = Object.values(impuestosRetenidos).map(imp => ({
+                        ...imp,
+                        base: Math.round(imp.base * 100) / 100,
+                        importe: Math.round(imp.importe * 100) / 100
+                    }));
+
+                    const totalTrasladados = arrayTrasladados.reduce((sum, imp) => sum + imp.importe, 0);
+                    const totalRetenidos = arrayRetenidos.reduce((sum, imp) => sum + imp.importe, 0);
+
+                    const total = (subtotal - descuento) + totalTrasladados - totalRetenidos;
 
                     this.totales = {
-                        subtotal: subtotal.toFixed(2),
-                        descuento: descuento.toFixed(2),
-                        impuestos: iva.toFixed(2),
-                        total: (baseImponible + iva).toFixed(2)
+                        subtotal: Math.round(subtotal * 100) / 100,
+                        descuento: Math.round(descuento * 100) / 100,
+                        impuestosTrasladados: arrayTrasladados,
+                        impuestosRetenidos: arrayRetenidos,
+                        totalTrasladados: Math.round(totalTrasladados * 100) / 100,
+                        totalRetenidos: Math.round(totalRetenidos * 100) / 100,
+                        total: Math.round(total * 100) / 100
                     };
+                },
+
+                // Agregar impuesto al concepto temporal
+                agregarImpuestoAConcepto() {
+                    const nuevoImpuesto = {
+                        tipo: this.impuestoTemp.tipo,
+                        tipoFactor: this.impuestoTemp.tipoFactor,
+                        tasaOCuota: parseFloat(this.impuestoTemp.tasaOCuota),
+                        esRetencion: this.impuestoTemp.esRetencion,
+                        base: 0,
+                        importe: 0
+                    };
+
+                    this.conceptoTemp.impuestos.push(nuevoImpuesto);
+
+                    // Reset impuesto temp
+                    this.impuestoTemp = {
+                        tipo: '002',
+                        tipoFactor: 'Tasa',
+                        tasaOCuota: 0.16,
+                        esRetencion: false
+                    };
+                },
+
+                // Eliminar impuesto del concepto temporal
+                eliminarImpuestoDeConcepto(index) {
+                    this.conceptoTemp.impuestos.splice(index, 1);
+                },
+
+                // Abrir modal para editar impuestos de un concepto ya agregado
+                editarImpuestosConcepto(index) {
+                    this.conceptoEditandoImpuestos = index;
+                    this.mostrarModalImpuestos = true;
+                },
+
+                // Agregar impuesto a concepto existente
+                agregarImpuestoAConceptoExistente() {
+                    if (this.conceptoEditandoImpuestos === null) return;
+
+                    const concepto = this.factura.conceptos[this.conceptoEditandoImpuestos];
+                    const nuevoImpuesto = {
+                        tipo: this.impuestoTemp.tipo,
+                        tipoFactor: this.impuestoTemp.tipoFactor,
+                        tasaOCuota: parseFloat(this.impuestoTemp.tasaOCuota),
+                        esRetencion: this.impuestoTemp.esRetencion,
+                        base: 0,
+                        importe: 0
+                    };
+
+                    concepto.impuestos.push(nuevoImpuesto);
+                    this.calcularImpuestosConcepto(concepto);
+                    this.calcularTotales();
+
+                    // Reset
+                    this.impuestoTemp = {
+                        tipo: '002',
+                        tipoFactor: 'Tasa',
+                        tasaOCuota: 0.16,
+                        esRetencion: false
+                    };
+                },
+
+                // Eliminar impuesto de concepto existente
+                eliminarImpuestoDeConceptoExistente(impIndex) {
+                    if (this.conceptoEditandoImpuestos === null) return;
+
+                    const concepto = this.factura.conceptos[this.conceptoEditandoImpuestos];
+                    concepto.impuestos.splice(impIndex, 1);
+                    this.calcularImpuestosConcepto(concepto);
+                    this.calcularTotales();
+                },
+
+                // Cerrar modal de impuestos
+                cerrarModalImpuestos() {
+                    this.mostrarModalImpuestos = false;
+                    this.conceptoEditandoImpuestos = null;
+                },
+
+                // Obtener nombre del tipo de impuesto
+                getNombreImpuesto(tipo) {
+                    const nombres = {
+                        '001': 'ISR',
+                        '002': 'IVA',
+                        '003': 'IEPS'
+                    };
+                    return nombres[tipo] || tipo;
+                },
+
+                // Formatear tasa o cuota para display
+                formatearTasaOCuota(tipoFactor, valor) {
+                    if (tipoFactor === 'Tasa') {
+                        return `${(valor * 100).toFixed(2)}%`;
+                    } else if (tipoFactor === 'Cuota') {
+                        return `$${valor.toFixed(2)}`;
+                    } else {
+                        return 'Exento';
+                    }
                 },
 
                 // Guardar factura
@@ -524,7 +765,7 @@
             </nav>
 
             <!-- Content Area -->
-            <div x-data="{ currentSection: 'dashboard' }">
+            <div>
 
                 <!-- Dashboard Section -->
                 <div x-show="currentSection === 'dashboard'" class="space-y-4">
@@ -856,6 +1097,68 @@
                                         </button>
                                     </div>
                                 </div>
+
+                                <!-- Gestión de Impuestos del Concepto -->
+                                <div x-show="conceptoTemp.objetoImpuestoClave === '02'" class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h4 class="text-sm font-semibold text-blue-900 flex items-center">
+                                            <i data-lucide="calculator" class="w-4 h-4 mr-1"></i>
+                                            Impuestos del Concepto
+                                        </h4>
+                                    </div>
+
+                                    <!-- Lista de impuestos propuestos/agregados -->
+                                    <div class="space-y-1 mb-3">
+                                        <template x-if="conceptoTemp.impuestos.length === 0">
+                                            <p class="text-xs text-blue-700">Se propondrá IVA 16% automáticamente</p>
+                                        </template>
+                                        <template x-for="(imp, idx) in conceptoTemp.impuestos" :key="idx">
+                                            <div class="flex items-center justify-between bg-white px-2 py-1 rounded text-xs">
+                                                <span x-text="`${getNombreImpuesto(imp.tipo)} ${formatearTasaOCuota(imp.tipoFactor, imp.tasaOCuota)} ${imp.esRetencion ? '(Ret)' : '(Trasl)'}`" class="text-gray-700"></span>
+                                                <button type="button" @click="eliminarImpuestoDeConcepto(idx)" class="text-red-600 hover:text-red-800">
+                                                    <i data-lucide="x" class="w-3 h-3"></i>
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- Agregar impuesto personalizado -->
+                                    <div class="grid grid-cols-5 gap-2">
+                                        <div>
+                                            <select x-model="impuestoTemp.tipo" class="w-full px-2 py-1 text-xs border border-gray-300 rounded">
+                                                <template x-if="catalogos">
+                                                    <template x-for="tipo in catalogos.tiposImpuesto" :key="tipo.clave">
+                                                        <option :value="tipo.clave" x-text="tipo.descripcion"></option>
+                                                    </template>
+                                                </template>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <select x-model="impuestoTemp.tipoFactor" class="w-full px-2 py-1 text-xs border border-gray-300 rounded">
+                                                <option value="Tasa">Tasa</option>
+                                                <option value="Cuota">Cuota</option>
+                                                <option value="Exento">Exento</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <input type="number" x-model="impuestoTemp.tasaOCuota" step="0.0001" min="0" max="1"
+                                                   placeholder="0.16"
+                                                   class="w-full px-2 py-1 text-xs border border-gray-300 rounded">
+                                        </div>
+                                        <div>
+                                            <label class="flex items-center text-xs">
+                                                <input type="checkbox" x-model="impuestoTemp.esRetencion" class="mr-1">
+                                                <span>Ret.</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <button type="button" @click="agregarImpuestoAConcepto"
+                                                    class="w-full px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
+                                                + Impuesto
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Tabla de conceptos -->
@@ -868,6 +1171,7 @@
                                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">Cantidad</th>
                                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">P. Unitario</th>
                                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">Descuento</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Impuestos</th>
                                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">Importe</th>
                                             <th class="px-4 py-2 text-center text-xs font-medium text-gray-700">Acciones</th>
                                         </tr>
@@ -876,22 +1180,46 @@
                                         <template x-for="(concepto, index) in factura.conceptos" :key="index">
                                             <tr class="border-b hover:bg-gray-50">
                                                 <td class="px-4 py-2 text-gray-900" x-text="index + 1"></td>
-                                                <td class="px-4 py-2 text-gray-900" x-text="concepto.descripcion"></td>
+                                                <td class="px-4 py-2 text-gray-900">
+                                                    <div x-text="concepto.descripcion"></div>
+                                                    <div class="text-xs text-gray-500" x-text="`${concepto.claveProductoServicio} | ${concepto.claveUnidad}`"></div>
+                                                </td>
                                                 <td class="px-4 py-2 text-right text-gray-900" x-text="concepto.cantidad"></td>
                                                 <td class="px-4 py-2 text-right text-gray-900" x-text="`$${concepto.valorUnitario.toFixed(2)}`"></td>
                                                 <td class="px-4 py-2 text-right text-gray-900" x-text="`$${concepto.descuento.toFixed(2)}`"></td>
+                                                <td class="px-4 py-2">
+                                                    <template x-if="concepto.impuestos && concepto.impuestos.length > 0">
+                                                        <div class="space-y-1">
+                                                            <template x-for="imp in concepto.impuestos" :key="imp.tipo">
+                                                                <div class="text-xs" :class="imp.esRetencion ? 'text-red-600' : 'text-green-600'">
+                                                                    <span x-text="`${getNombreImpuesto(imp.tipo)} ${formatearTasaOCuota(imp.tipoFactor, imp.tasaOCuota)}`"></span>
+                                                                    <span x-text="`: $${imp.importe.toFixed(2)}`" class="font-medium"></span>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="!concepto.impuestos || concepto.impuestos.length === 0">
+                                                        <span class="text-xs text-gray-400">Sin impuestos</span>
+                                                    </template>
+                                                </td>
                                                 <td class="px-4 py-2 text-right font-medium text-gray-900" x-text="`$${concepto.importe.toFixed(2)}`"></td>
                                                 <td class="px-4 py-2 text-center">
-                                                    <button type="button" @click="eliminarConcepto(index)"
-                                                            class="text-red-600 hover:text-red-800">
-                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                                    </button>
+                                                    <div class="flex items-center justify-center space-x-1">
+                                                        <button type="button" @click="editarImpuestosConcepto(index)" title="Editar impuestos"
+                                                                class="text-blue-600 hover:text-blue-800">
+                                                            <i data-lucide="calculator" class="w-4 h-4"></i>
+                                                        </button>
+                                                        <button type="button" @click="eliminarConcepto(index)" title="Eliminar"
+                                                                class="text-red-600 hover:text-red-800">
+                                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         </template>
                                         <template x-if="factura.conceptos.length === 0">
                                             <tr>
-                                                <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                                                <td colspan="8" class="px-4 py-8 text-center text-gray-500">
                                                     No hay conceptos agregados
                                                 </td>
                                             </tr>
@@ -900,24 +1228,57 @@
                                 </table>
                             </div>
 
-                            <!-- Totales -->
+                            <!-- Totales Detallados -->
                             <div class="mt-6 flex justify-end">
-                                <div class="w-full md:w-1/2 lg:w-1/3 space-y-2">
-                                    <div class="flex justify-between text-sm">
+                                <div class="w-full md:w-2/3 lg:w-1/2 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <!-- Subtotal y Descuento -->
+                                    <div class="flex justify-between text-sm mb-2">
                                         <span class="text-gray-600">Subtotal:</span>
-                                        <span class="font-medium" x-text="`$${totales.subtotal}`"></span>
+                                        <span class="font-medium" x-text="`$${totales.subtotal.toFixed(2)}`"></span>
                                     </div>
-                                    <div class="flex justify-between text-sm">
+                                    <div x-show="totales.descuento > 0" class="flex justify-between text-sm mb-2">
                                         <span class="text-gray-600">Descuento:</span>
-                                        <span class="font-medium text-red-600" x-text="`-$${totales.descuento}`"></span>
+                                        <span class="font-medium text-red-600" x-text="`-$${totales.descuento.toFixed(2)}`"></span>
                                     </div>
-                                    <div class="flex justify-between text-sm">
-                                        <span class="text-gray-600">IVA (16%):</span>
-                                        <span class="font-medium" x-text="`$${totales.impuestos}`"></span>
-                                    </div>
-                                    <div class="flex justify-between text-lg font-bold border-t pt-2">
+
+                                    <!-- Impuestos Trasladados -->
+                                    <template x-if="totales.impuestosTrasladados && totales.impuestosTrasladados.length > 0">
+                                        <div class="border-t pt-2 mt-2">
+                                            <p class="text-xs font-semibold text-gray-700 mb-1">Impuestos Trasladados:</p>
+                                            <template x-for="imp in totales.impuestosTrasladados" :key="`tras_${imp.tipo}_${imp.tasaOCuota}`">
+                                                <div class="flex justify-between text-sm pl-2 mb-1">
+                                                    <span class="text-green-700" x-text="`${getNombreImpuesto(imp.tipo)} ${formatearTasaOCuota(imp.tipoFactor, imp.tasaOCuota)}`"></span>
+                                                    <span class="font-medium text-green-700" x-text="`$${imp.importe.toFixed(2)}`"></span>
+                                                </div>
+                                            </template>
+                                            <div class="flex justify-between text-sm font-semibold text-green-800 mt-1 pl-2">
+                                                <span>Total Trasladados:</span>
+                                                <span x-text="`$${totales.totalTrasladados.toFixed(2)}`"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Impuestos Retenidos -->
+                                    <template x-if="totales.impuestosRetenidos && totales.impuestosRetenidos.length > 0">
+                                        <div class="border-t pt-2 mt-2">
+                                            <p class="text-xs font-semibold text-gray-700 mb-1">Impuestos Retenidos:</p>
+                                            <template x-for="imp in totales.impuestosRetenidos" :key="`ret_${imp.tipo}_${imp.tasaOCuota}`">
+                                                <div class="flex justify-between text-sm pl-2 mb-1">
+                                                    <span class="text-red-700" x-text="`${getNombreImpuesto(imp.tipo)} ${formatearTasaOCuota(imp.tipoFactor, imp.tasaOCuota)}`"></span>
+                                                    <span class="font-medium text-red-700" x-text="`-$${imp.importe.toFixed(2)}`"></span>
+                                                </div>
+                                            </template>
+                                            <div class="flex justify-between text-sm font-semibold text-red-800 mt-1 pl-2">
+                                                <span>Total Retenidos:</span>
+                                                <span x-text="`-$${totales.totalRetenidos.toFixed(2)}`"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Total Final -->
+                                    <div class="flex justify-between text-lg font-bold border-t-2 border-gray-300 pt-3 mt-3">
                                         <span>Total:</span>
-                                        <span class="text-blue-600" x-text="`$${totales.total}`"></span>
+                                        <span class="text-blue-600" x-text="`$${totales.total.toFixed(2)}`"></span>
                                     </div>
                                 </div>
                             </div>
@@ -932,6 +1293,126 @@
                         </div>
 
                     </form>
+
+                    <!-- Modal para Editar Impuestos de Concepto -->
+                    <div x-show="mostrarModalImpuestos" x-cloak
+                         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                         @click.self="cerrarModalImpuestos()">
+                        <div class="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                            <!-- Header -->
+                            <div class="flex items-center justify-between mb-4 pb-3 border-b">
+                                <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                                    <i data-lucide="calculator" class="w-5 h-5 mr-2 text-blue-600"></i>
+                                    Editar Impuestos del Concepto
+                                </h3>
+                                <button @click="cerrarModalImpuestos()" class="text-gray-400 hover:text-gray-600">
+                                    <i data-lucide="x" class="w-6 h-6"></i>
+                                </button>
+                            </div>
+
+                            <!-- Información del Concepto -->
+                            <template x-if="conceptoEditandoImpuestos !== null">
+                                <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+                                    <p class="text-sm font-medium text-gray-700" x-text="factura.conceptos[conceptoEditandoImpuestos]?.descripcion"></p>
+                                    <p class="text-xs text-gray-500">
+                                        <span x-text="`Importe: $${factura.conceptos[conceptoEditandoImpuestos]?.importe.toFixed(2)}`"></span>
+                                    </p>
+                                </div>
+                            </template>
+
+                            <!-- Lista de Impuestos Actuales -->
+                            <div class="mb-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Impuestos Actuales:</h4>
+                                <template x-if="conceptoEditandoImpuestos !== null">
+                                    <div class="space-y-2">
+                                        <template x-for="(imp, idx) in factura.conceptos[conceptoEditandoImpuestos]?.impuestos" :key="idx">
+                                            <div class="flex items-center justify-between bg-white border border-gray-200 rounded px-3 py-2">
+                                                <div class="flex-1">
+                                                    <span class="text-sm font-medium" x-text="getNombreImpuesto(imp.tipo)"></span>
+                                                    <span class="text-sm text-gray-600" x-text="` | ${formatearTasaOCuota(imp.tipoFactor, imp.tasaOCuota)}`"></span>
+                                                    <span class="text-sm" :class="imp.esRetencion ? 'text-red-600' : 'text-green-600'" x-text="imp.esRetencion ? ' (Retenido)' : ' (Trasladado)'"></span>
+                                                </div>
+                                                <div class="flex items-center space-x-3">
+                                                    <span class="text-sm font-bold" x-text="`$${imp.importe.toFixed(2)}`"></span>
+                                                    <button type="button" @click="eliminarImpuestoDeConceptoExistente(idx)"
+                                                            class="text-red-600 hover:text-red-800">
+                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="!factura.conceptos[conceptoEditandoImpuestos]?.impuestos || factura.conceptos[conceptoEditandoImpuestos]?.impuestos.length === 0">
+                                            <p class="text-sm text-gray-500 italic">No hay impuestos configurados</p>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Agregar Nuevo Impuesto -->
+                            <div class="border-t pt-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-3">Agregar Impuesto:</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Tipo de Impuesto</label>
+                                        <select x-model="impuestoTemp.tipo" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <template x-if="catalogos">
+                                                <template x-for="tipo in catalogos.tiposImpuesto" :key="tipo.clave">
+                                                    <option :value="tipo.clave" x-text="`${tipo.clave} - ${tipo.descripcion}`"></option>
+                                                </template>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Tipo de Factor</label>
+                                        <select x-model="impuestoTemp.tipoFactor" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <option value="Tasa">Tasa</option>
+                                            <option value="Cuota">Cuota</option>
+                                            <option value="Exento">Exento</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">
+                                            <span x-text="impuestoTemp.tipoFactor === 'Tasa' ? 'Tasa (0.16 = 16%)' : 'Cuota'"></span>
+                                        </label>
+                                        <input type="number" x-model="impuestoTemp.tasaOCuota"
+                                               :step="impuestoTemp.tipoFactor === 'Tasa' ? '0.0001' : '0.01'"
+                                               min="0"
+                                               :max="impuestoTemp.tipoFactor === 'Tasa' ? '1' : '999999'"
+                                               placeholder="0.16"
+                                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+                                        <div class="flex items-center space-x-4 mt-2">
+                                            <label class="flex items-center">
+                                                <input type="radio" x-model="impuestoTemp.esRetencion" :value="false" class="mr-2">
+                                                <span class="text-sm text-green-700">Trasladado</span>
+                                            </label>
+                                            <label class="flex items-center">
+                                                <input type="radio" x-model="impuestoTemp.esRetencion" :value="true" class="mr-2">
+                                                <span class="text-sm text-red-700">Retenido</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <button type="button" @click="agregarImpuestoAConceptoExistente"
+                                            class="w-full px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition flex items-center justify-center space-x-2">
+                                        <i data-lucide="plus" class="w-4 h-4"></i>
+                                        <span>Agregar Impuesto</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Footer -->
+                            <div class="mt-6 pt-4 border-t flex justify-end">
+                                <button type="button" @click="cerrarModalImpuestos"
+                                        class="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition">
+                                    Cerrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div x-show="currentSection === 'clientes'" class="space-y-4">

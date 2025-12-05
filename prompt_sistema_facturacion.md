@@ -327,7 +327,7 @@ A partir de ahora, todo lo que te pegue (código, SQL, definición del MCP, desc
 
 # 📝 ESTADO ACTUAL DEL ANÁLISIS
 
-**Fecha última actualización:** 2025-11-27
+**Fecha última actualización:** 2025-12-04 (FASE 3 - Formulario de facturas y cálculo automático de impuestos)
 
 ## ✅ Análisis completado
 
@@ -661,6 +661,7 @@ Cuando el MCP esté conectado correctamente, deberás tener acceso a herramienta
 ## 🚀 ESTADO ACTUAL DEL PROYECTO
 
 **Fecha última actualización:** 2025-12-04 ✅
+**Última sesión:** Formulario de facturas + Cálculo automático de impuestos + Bug fixes
 
 ---
 
@@ -784,23 +785,92 @@ Cuando el MCP esté conectado correctamente, deberás tener acceso a herramienta
 
 ---
 
-## 📋 **PENDIENTES PRÓXIMA SESIÓN - FASE 3**
+## ✅ **COMPLETADO - FASE 3 (PARCIAL) - 2025-12-04**
+
+### **Formulario de Captura de Facturas:**
+1. ✅ **catalogos.controller.ts** (CREADO)
+   - 11 endpoints para catálogos SAT
+   - Endpoints individuales por cada catálogo
+   - Endpoint `/todos` para obtener todos los catálogos en una sola llamada
+   - Endpoints para clientes y empresas
+
+2. ✅ **catalogos.routes.ts** (CREADO)
+   - Rutas para todos los catálogos SAT
+   - Protegidas con authMiddleware
+   - Integradas en app.ts
+
+3. ✅ **Formulario de factura completo en index.html:**
+   - Todos los campos obligatorios CFDI 4.0
+   - Selects con catálogos SAT (Forma Pago, Método Pago, Uso CFDI, Moneda)
+   - Sección de conceptos con agregar/eliminar
+   - Campos por concepto: clave producto, descripción, cantidad, unidad, precio, descuento
+   - Sistema de gestión de impuestos por concepto
+
+### **Sistema de Cálculo Automático de Impuestos:**
+4. ✅ **Propuesta automática de impuestos (estilo portal SAT):**
+   - Función `proponerImpuestos(objetoImpuestoClave)` basada en c_ObjetoImp
+   - Objeto Impuesto "01" (No objeto de impuesto) → Sin impuestos
+   - Objeto Impuesto "02" (Sí objeto de impuesto) → Propone IVA 16%
+   - Objeto Impuesto "04" (Sí objeto de impuesto y no obligado) → Propone IVA Exento
+
+5. ✅ **Cálculo de impuestos por concepto:**
+   - Función `calcularImpuestosConcepto(concepto)`
+   - Soporta múltiples impuestos por concepto
+   - Calcula base, importe según tipo de factor:
+     - **Tasa:** base × tasaOCuota
+     - **Cuota:** cantidad × tasaOCuota
+     - **Exento:** importe = 0
+   - Redondeo a 2 decimales
+
+6. ✅ **Cálculo de totales detallados:**
+   - Función `calcularTotales()`
+   - Agrupa impuestos trasladados por tipo/tasa/factor
+   - Agrupa impuestos retenidos por tipo/tasa/factor
+   - Muestra desglose completo:
+     - Subtotal
+     - Descuento
+     - Impuestos Trasladados (detallados)
+     - Impuestos Retenidos (detallados)
+     - Total
+
+7. ✅ **UI para gestión de impuestos:**
+   - Tabla de impuestos antes de agregar concepto
+   - Botones para agregar/eliminar impuestos
+   - Modal para editar impuestos en conceptos existentes
+   - Vista de impuestos en tabla de conceptos
+   - Sección de totales con desglose fiscal
+
+### **Corrección de Bugs:**
+8. ✅ **Usuario admin:**
+   - Creado script `create-admin.ts` para resetear contraseña
+   - Password reseteado a: admin123
+   - Instalado bcrypt para hash de contraseñas
+
+9. ✅ **Navegación Alpine.js:**
+   - Corregido bug crítico de navegación
+   - Problema: Scope duplicado de `currentSection` (línea 768)
+   - Solución: Eliminado `x-data="{ currentSection: 'dashboard' }"` duplicado
+   - Navegación entre secciones funcionando correctamente
+
+---
+
+## 📋 **PENDIENTES PRÓXIMA SESIÓN - FASE 3 (CONTINUACIÓN)**
 
 ### **Prioridad CRÍTICA:**
 1. ⏳ Crear sistema de Bóveda para certificados (.cer y .key)
-2. ⏳ Implementar validaciones CFDI 4.0 exhaustivas
-3. ⏳ Crear formulario de captura de facturas con todos los campos CFDI 4.0
-4. ⏳ Implementar cálculo automático de impuestos
+2. ⏳ Implementar validaciones CFDI 4.0 exhaustivas en backend
+3. ⏳ Implementar guardado de facturas en BD (backend)
+4. ⏳ Probar casos edge del cálculo de impuestos
 
 ### **Prioridad ALTA:**
-5. ⏳ Integrar módulos (Facturas, Clientes) con nuevo diseño UI
-6. ⏳ Crear servicios y controllers para catálogos SAT
-7. ⏳ Investigar y seleccionar 2 proveedores PAC
-8. ⏳ Implementar generación de XML CFDI 4.0
+5. ⏳ Crear pantalla de lista de facturas (consulta)
+6. ⏳ Investigar y seleccionar 2 proveedores PAC
+7. ⏳ Implementar generación de XML CFDI 4.0
+8. ⏳ Crear pantalla de configuración de Empresa/Emisor
 
 ### **Prioridad MEDIA:**
-9. ⏳ Crear pantalla de configuración de Empresa/Emisor
-10. ⏳ Implementar pruebas de casos edge (redondeos, impuestos)
+9. ⏳ Implementar edición de facturas (borrador)
+10. ⏳ Implementar pruebas unitarias de validaciones CFDI
 
 ---
 
@@ -820,8 +890,19 @@ Cuando el MCP esté conectado correctamente, deberás tener acceso a herramienta
 **UI/UX Moderno:**
 - Completado: ✅ 100%
 
-**Progreso General FASE 1-2:**
-- **100% COMPLETADO** ✅ 🎉
+**Formulario de Facturas:**
+- Campos CFDI 4.0: ✅ 100%
+- Cálculo de impuestos: ✅ 100%
+- Totales automáticos: ✅ 100%
+
+**APIs de Catálogos:**
+- Endpoints creados: 11/11 ✅ 100%
+- Controllers: ✅ 100%
+- Rutas: ✅ 100%
+
+**Progreso General:**
+- **FASE 1-2:** 100% COMPLETADO ✅ 🎉
+- **FASE 3:** 40% COMPLETADO ✅ (Formulario + Cálculos automáticos)
 
 ---
 
@@ -854,11 +935,60 @@ src/seeds/
 src/config/
 └── database.ts               ✅ Configuración TypeORM + carga automática catálogos
 
+src/controllers/
+└── catalogos.controller.ts   ✅ Controller de catálogos SAT (11 endpoints)
+
+src/routes/
+└── catalogos.routes.ts       ✅ Rutas de catálogos SAT
+
 Raíz/
-├── index.html                ✅ Diseño moderno
+├── index.html                ✅ Diseño moderno + Formulario de facturas
 ├── tailwind.config.js        ✅ Configuración Tailwind
 ├── postcss.config.js         ✅ Configuración PostCSS
-└── src/input.css             ✅ Estilos personalizados
+├── src/input.css             ✅ Estilos personalizados
+└── create-admin.ts           ✅ Script para reset password admin
+```
+
+---
+
+## 📝 **ARCHIVOS CREADOS/MODIFICADOS - FASE 3**
+
+### **Nuevos Archivos:**
+1. `src/controllers/catalogos.controller.ts` - Controller para APIs de catálogos SAT
+2. `src/routes/catalogos.routes.ts` - Rutas de catálogos SAT
+3. `create-admin.ts` - Script para crear/resetear usuario admin
+
+### **Archivos Modificados:**
+1. `src/app.ts` - Agregada ruta `/api/catalogos`
+2. `index.html` - Agregado formulario completo de facturas con cálculo automático de impuestos
+
+### **Funcionalidades Implementadas en index.html:**
+```javascript
+// Funciones clave en Alpine.js:
+- proponerImpuestos(objetoImpuestoClave)        // Propuesta automática estilo SAT
+- calcularImpuestosConcepto(concepto)           // Cálculo por concepto
+- calcularTotales()                              // Totales detallados
+- agregarConcepto()                              // Agregar concepto con validación
+- eliminarConcepto(index)                        // Eliminar concepto
+- editarImpuestosConcepto(index)                 // Abrir modal de edición
+- guardarFactura()                               // Enviar factura al backend
+- cargarCatalogos()                              // Cargar catálogos SAT
+```
+
+### **Endpoints de Catálogos Implementados:**
+```
+GET /api/catalogos/formas-pago
+GET /api/catalogos/metodos-pago
+GET /api/catalogos/usos-cfdi
+GET /api/catalogos/monedas
+GET /api/catalogos/regimenes-fiscales
+GET /api/catalogos/claves-unidad
+GET /api/catalogos/objetos-impuesto
+GET /api/catalogos/tipos-impuesto
+GET /api/catalogos/tipos-factor
+GET /api/catalogos/clientes
+GET /api/catalogos/empresas
+GET /api/catalogos/todos                        // Todos los catálogos en una llamada
 ```
 
 ---
