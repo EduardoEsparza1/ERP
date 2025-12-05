@@ -6,6 +6,18 @@ import { Cliente } from '../entities/Cliente';
 import { Factura } from '../entities/Factura';
 import { ConceptoFactura } from '../entities/ConceptoFactura';
 import { CatalogoSAT } from '../entities/CatalogoSAT';
+import { ImpuestoConcepto } from '../entities/ImpuestoConcepto';
+import { Empresa } from '../entities/Empresa';
+import { FormaPago } from '../entities/FormaPago';
+import { MetodoPago } from '../entities/MetodoPago';
+import { UsoCFDI } from '../entities/UsoCFDI';
+import { Moneda } from '../entities/Moneda';
+import { RegimenFiscal } from '../entities/RegimenFiscal';
+import { ClaveUnidad } from '../entities/ClaveUnidad';
+import { ObjetoImpuesto } from '../entities/ObjetoImpuesto';
+import { TipoImpuesto } from '../entities/TipoImpuesto';
+import { TipoFactor } from '../entities/TipoFactor';
+import * as catalogosSAT from '../seeds/catalogosSAT.seed';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -25,7 +37,29 @@ export const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD,
   synchronize: true, // En producción usar migraciones
   logging: process.env.NODE_ENV === 'development',
-  entities: [User, Nomina, Finanza, Cliente, Factura, ConceptoFactura, CatalogoSAT],
+  entities: [
+    // Entidades de usuarios y sistema
+    User,
+    Nomina,
+    Finanza,
+    // Entidades CFDI principales
+    Empresa,
+    Cliente,
+    Factura,
+    ConceptoFactura,
+    ImpuestoConcepto,
+    CatalogoSAT,
+    // Catálogos SAT CFDI 4.0
+    FormaPago,
+    MetodoPago,
+    UsoCFDI,
+    Moneda,
+    RegimenFiscal,
+    ClaveUnidad,
+    ObjetoImpuesto,
+    TipoImpuesto,
+    TipoFactor,
+  ],
   migrations: ['src/migrations/**/*.ts'],
   subscribers: ['src/subscribers/**/*.ts'],
   extra: {
@@ -105,9 +139,109 @@ export const initializeDatabase = async (): Promise<void> => {
       }
       console.log('Catálogo SAT inicializado');
     }
+
+    // Cargar catálogos SAT CFDI 4.0
+    await cargarCatalogosSAT();
+
   } catch (error) {
     console.error('Error al conectar con la base de datos:', error);
     throw error;
   }
 };
+
+async function cargarCatalogosSAT(): Promise<void> {
+  console.log('🔄 Cargando catálogos SAT CFDI 4.0...');
+
+  // Formas de Pago
+  const formaPagoRepo = AppDataSource.getRepository(FormaPago);
+  const countFormasPago = await formaPagoRepo.count();
+  if (countFormasPago === 0) {
+    for (const fp of catalogosSAT.formasPago) {
+      await formaPagoRepo.save(formaPagoRepo.create(fp));
+    }
+    console.log(`✅ ${catalogosSAT.formasPago.length} formas de pago cargadas`);
+  }
+
+  // Métodos de Pago
+  const metodoPagoRepo = AppDataSource.getRepository(MetodoPago);
+  const countMetodosPago = await metodoPagoRepo.count();
+  if (countMetodosPago === 0) {
+    for (const mp of catalogosSAT.metodosPago) {
+      await metodoPagoRepo.save(metodoPagoRepo.create(mp));
+    }
+    console.log(`✅ ${catalogosSAT.metodosPago.length} métodos de pago cargados`);
+  }
+
+  // Usos CFDI
+  const usoCFDIRepo = AppDataSource.getRepository(UsoCFDI);
+  const countUsos = await usoCFDIRepo.count();
+  if (countUsos === 0) {
+    for (const uso of catalogosSAT.usosCFDI) {
+      await usoCFDIRepo.save(usoCFDIRepo.create(uso));
+    }
+    console.log(`✅ ${catalogosSAT.usosCFDI.length} usos CFDI cargados`);
+  }
+
+  // Monedas
+  const monedaRepo = AppDataSource.getRepository(Moneda);
+  const countMonedas = await monedaRepo.count();
+  if (countMonedas === 0) {
+    for (const moneda of catalogosSAT.monedas) {
+      await monedaRepo.save(monedaRepo.create(moneda));
+    }
+    console.log(`✅ ${catalogosSAT.monedas.length} monedas cargadas`);
+  }
+
+  // Regímenes Fiscales
+  const regimenRepo = AppDataSource.getRepository(RegimenFiscal);
+  const countRegimenes = await regimenRepo.count();
+  if (countRegimenes === 0) {
+    for (const regimen of catalogosSAT.regimenesFiscales) {
+      await regimenRepo.save(regimenRepo.create(regimen));
+    }
+    console.log(`✅ ${catalogosSAT.regimenesFiscales.length} regímenes fiscales cargados`);
+  }
+
+  // Claves de Unidad
+  const claveUnidadRepo = AppDataSource.getRepository(ClaveUnidad);
+  const countUnidades = await claveUnidadRepo.count();
+  if (countUnidades === 0) {
+    for (const unidad of catalogosSAT.clavesUnidad) {
+      await claveUnidadRepo.save(claveUnidadRepo.create(unidad));
+    }
+    console.log(`✅ ${catalogosSAT.clavesUnidad.length} claves de unidad cargadas`);
+  }
+
+  // Objetos de Impuesto
+  const objetoImpuestoRepo = AppDataSource.getRepository(ObjetoImpuesto);
+  const countObjetos = await objetoImpuestoRepo.count();
+  if (countObjetos === 0) {
+    for (const objeto of catalogosSAT.objetosImpuesto) {
+      await objetoImpuestoRepo.save(objetoImpuestoRepo.create(objeto));
+    }
+    console.log(`✅ ${catalogosSAT.objetosImpuesto.length} objetos de impuesto cargados`);
+  }
+
+  // Tipos de Impuesto
+  const tipoImpuestoRepo = AppDataSource.getRepository(TipoImpuesto);
+  const countTipos = await tipoImpuestoRepo.count();
+  if (countTipos === 0) {
+    for (const tipo of catalogosSAT.tiposImpuesto) {
+      await tipoImpuestoRepo.save(tipoImpuestoRepo.create(tipo));
+    }
+    console.log(`✅ ${catalogosSAT.tiposImpuesto.length} tipos de impuesto cargados`);
+  }
+
+  // Tipos de Factor
+  const tipoFactorRepo = AppDataSource.getRepository(TipoFactor);
+  const countFactores = await tipoFactorRepo.count();
+  if (countFactores === 0) {
+    for (const factor of catalogosSAT.tiposFactor) {
+      await tipoFactorRepo.save(tipoFactorRepo.create(factor));
+    }
+    console.log(`✅ ${catalogosSAT.tiposFactor.length} tipos de factor cargados`);
+  }
+
+  console.log('✅ Catálogos SAT CFDI 4.0 cargados correctamente');
+}
 

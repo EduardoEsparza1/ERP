@@ -2,7 +2,7 @@ import { Entity, PrimaryColumn, Column } from 'typeorm';
 
 @Entity('catalogo_sat')
 export class CatalogoSAT {
-  @PrimaryColumn()
+  @PrimaryColumn({ length: 10 })
   clave!: string; // Clave del producto/servicio
 
   @Column()

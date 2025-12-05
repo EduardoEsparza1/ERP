@@ -1,25 +1,36 @@
 import { AppDataSource } from '../config/database';
 import { Factura, EstadoFactura, EstadoPago } from '../entities/Factura';
 import { ConceptoFactura } from '../entities/ConceptoFactura';
+import { ImpuestoConcepto } from '../entities/ImpuestoConcepto';
 import { Cliente } from '../entities/Cliente';
 import { User } from '../entities/User';
 import { CatalogoSAT } from '../entities/CatalogoSAT';
 import { v4 as uuidv4 } from 'uuid';
 
+export interface ImpuestoConceptoDTO {
+  tipo: 'Trasladado' | 'Retenido';
+  impuesto: string; // 001-ISR, 002-IVA, 003-IEPS
+  tipoFactor: string; // Tasa, Cuota, Exento
+  tasaOCuota?: number;
+  base: number;
+  importe: number;
+}
+
 export interface ConceptoFacturaDTO {
   claveProductoServicio: string;
   descripcion: string;
   cantidad: number;
-  precioUnitario: number;
-  tieneImpuesto: boolean;
-  tipoImpuesto?: string;
-  tasaImpuesto?: number;
-  unidadMedida?: string;
+  valorUnitario: number; // Antes: precioUnitario
+  claveUnidad: string; // Antes: unidadMedida (ej: 'H87')
+  objetoImpuestoClave: string; // Nuevo CFDI 4.0 ('01', '02', '03', '04')
+  impuestos?: ImpuestoConceptoDTO[]; // Antes: tieneImpuesto, tipoImpuesto, tasaImpuesto
+  descuento?: number;
 }
 
 export class FacturaService {
   private facturaRepository = AppDataSource.getRepository(Factura);
   private conceptoRepository = AppDataSource.getRepository(ConceptoFactura);
+  private impuestoConceptoRepository = AppDataSource.getRepository(ImpuestoConcepto);
   private clienteRepository = AppDataSource.getRepository(Cliente);
   private userRepository = AppDataSource.getRepository(User);
   private catalogoRepository = AppDataSource.getRepository(CatalogoSAT);
@@ -43,13 +54,20 @@ export class FacturaService {
   }
 
   async crearFactura(
+    empresaId: number,
     clienteId: number,
     serie: string,
+    lugarExpedicion: string,
+    metodoPagoClave: string,
+    usoCFDIClave: string,
     fechaEmision: Date,
-    fechaVencimiento: Date,
+    fechaVencimiento: Date | null,
     conceptos: ConceptoFacturaDTO[],
     observaciones: string,
-    userId: number
+    userId: number,
+    formaPagoClave?: string,
+    monedaClave: string = 'MXN',
+    exportacion: string = '01'
   ): Promise<Factura> {
     if (!conceptos || conceptos.length === 0) {
       throw new Error('Debe agregar al menos un concepto');
@@ -68,9 +86,9 @@ export class FacturaService {
     // Generar folio automáticamente
     const folio = await this.generarFolio(serie);
 
-    // Calcular subtotal, IVA y total basado en los conceptos
+    // Calcular subtotal y total basado en los conceptos
     let subtotal = 0;
-    let totalIva = 0;
+    let totalDescuento = 0;
 
     const conceptosEntities: ConceptoFactura[] = [];
 
@@ -84,53 +102,55 @@ export class FacturaService {
         throw new Error(`Código SAT ${conceptoDTO.claveProductoServicio} no encontrado en el catálogo`);
       }
 
-      const importe = conceptoDTO.cantidad * conceptoDTO.precioUnitario;
+      const importe = conceptoDTO.cantidad * conceptoDTO.valorUnitario;
+      const descuento = conceptoDTO.descuento || 0;
       subtotal += importe;
-
-      let importeImpuesto = 0;
-      if (conceptoDTO.tieneImpuesto && conceptoDTO.tasaImpuesto) {
-        importeImpuesto = importe * (conceptoDTO.tasaImpuesto / 100);
-        totalIva += importeImpuesto;
-      }
+      totalDescuento += descuento;
 
       const concepto = this.conceptoRepository.create({
-        catalogoSAT,
         claveProductoServicio: conceptoDTO.claveProductoServicio,
         descripcion: conceptoDTO.descripcion,
         cantidad: conceptoDTO.cantidad,
-        precioUnitario: conceptoDTO.precioUnitario,
+        valorUnitario: conceptoDTO.valorUnitario,
+        claveUnidad: conceptoDTO.claveUnidad,
         importe,
-        tieneImpuesto: conceptoDTO.tieneImpuesto,
-        tipoImpuesto: conceptoDTO.tipoImpuesto || '002', // 002 = IVA
-        tasaImpuesto: conceptoDTO.tasaImpuesto || 0,
-        importeImpuesto,
-        unidadMedida: conceptoDTO.unidadMedida || 'H87', // H87 = Pieza
+        descuento,
+        objetoImpuestoClave: conceptoDTO.objetoImpuestoClave,
       });
 
       conceptosEntities.push(concepto);
     }
 
-    const total = subtotal + totalIva;
+    // Calcular total con impuestos (se calculan en los conceptos)
+    const total = subtotal - totalDescuento; // Los impuestos se suman después al guardar los conceptos con sus impuestos
 
     const factura = this.facturaRepository.create({
       folio,
       serie,
-      cliente,
+      empresaId,
+      lugarExpedicion,
+      clienteId,
       fechaEmision,
-      fechaVencimiento,
+      fechaVencimiento: fechaVencimiento || undefined,
+      formaPagoClave,
+      metodoPagoClave,
+      usoCFDIClave,
+      monedaClave,
+      exportacion,
       subtotal,
-      iva: totalIva,
+      descuento: totalDescuento,
       total,
       observaciones,
       estadoFactura: EstadoFactura.BORRADOR,
       estadoPago: EstadoPago.PENDIENTE,
       saldoPendiente: total,
       montoPagado: 0,
-      usuarioCreacion: user,
+      usuarioCreacionId: userId,
       conceptos: conceptosEntities,
     });
 
-    return await this.facturaRepository.save(factura);
+    const facturaGuardada = await this.facturaRepository.save(factura);
+    return facturaGuardada;
   }
 
   async timbrarFactura(id: number): Promise<Factura> {
@@ -171,62 +191,45 @@ export class FacturaService {
   }
 
   private generarXMLSimulado(factura: Factura, uuid: string, fechaTimbrado: Date): string {
-    // Generar XML del CFDI con múltiples conceptos
+    // TODO: ACTUALIZAR PARA CFDI 4.0 - Esta función necesita refactorización para usar ImpuestoConcepto
+    // Por ahora retorna un XML básico sin impuestos detallados
     const conceptosXML = factura.conceptos
       .map(
         (concepto) => `
-    <cfdi:Concepto 
-      ClaveProdServ="${concepto.claveProductoServicio}" 
-      NoIdentificacion="${concepto.claveProductoServicio}"
-      Cantidad="${concepto.cantidad}" 
-      ClaveUnidad="${concepto.unidadMedida || 'H87'}"
-      Unidad="${concepto.unidadMedida || 'Pieza'}"
-      Descripcion="${concepto.descripcion}" 
-      ValorUnitario="${concepto.precioUnitario}" 
-      Importe="${concepto.importe}">
-      ${concepto.tieneImpuesto && concepto.importeImpuesto > 0
-        ? `
-      <cfdi:Impuestos>
-        <cfdi:Traslados>
-          <cfdi:Traslado 
-            Base="${concepto.importe}" 
-            Impuesto="${concepto.tipoImpuesto || '002'}" 
-            TipoFactor="Tasa" 
-            TasaOCuota="${(concepto.tasaImpuesto || 0) / 100}" 
-            Importe="${concepto.importeImpuesto}"/>
-        </cfdi:Traslados>
-      </cfdi:Impuestos>`
-        : ''
-      }
+    <cfdi:Concepto
+      ClaveProdServ="${concepto.claveProductoServicio}"
+      NoIdentificacion="${concepto.noIdentificacion || concepto.claveProductoServicio}"
+      Cantidad="${concepto.cantidad}"
+      ClaveUnidad="${concepto.claveUnidad}"
+      Unidad="${concepto.unidadTexto || 'Pieza'}"
+      Descripcion="${concepto.descripcion}"
+      ValorUnitario="${concepto.valorUnitario}"
+      Importe="${concepto.importe}"
+      ObjetoImp="${concepto.objetoImpuestoClave}">
     </cfdi:Concepto>`
       )
       .join('');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" 
-  Version="4.0" 
-  Serie="${factura.serie}" 
-  Folio="${factura.folio}" 
-  Fecha="${fechaTimbrado.toISOString()}" 
-  SubTotal="${factura.subtotal}" 
-  Total="${factura.total}" 
-  Moneda="MXN"
-  TipoCambio="1"
-  TipoDeComprobante="I"
-  MetodoPago="PUE"
-  FormaPago="03"
-  CondicionesDePago="Contado"
-  LugarExpedicion="01234"
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
+  Version="4.0"
+  Serie="${factura.serie}"
+  Folio="${factura.folio}"
+  Fecha="${fechaTimbrado.toISOString()}"
+  SubTotal="${factura.subtotal}"
+  Descuento="${factura.descuento || 0}"
+  Total="${factura.total}"
+  Moneda="${factura.monedaClave}"
+  TipoDeComprobante="${factura.tipoComprobante}"
+  MetodoPago="${factura.metodoPagoClave}"
+  FormaPago="${factura.formaPagoClave || ''}"
+  LugarExpedicion="${factura.lugarExpedicion}"
+  Exportacion="${factura.exportacion}"
   UUID="${uuid}">
   <cfdi:Emisor Rfc="ABC123456789" Nombre="Mi Empresa" RegimenFiscal="601"/>
-  <cfdi:Receptor Rfc="${factura.cliente.rfc}" Nombre="${factura.cliente.razonSocial}" UsoCFDI="G01"/>
+  <cfdi:Receptor Rfc="${factura.cliente.rfc}" Nombre="${factura.cliente.razonSocial}" UsoCFDI="${factura.usoCFDIClave}" DomicilioFiscalReceptor="${factura.cliente.codigoPostal}" RegimenFiscalReceptor="${factura.cliente.regimenFiscalClave}"/>
   <cfdi:Conceptos>${conceptosXML}
   </cfdi:Conceptos>
-  <cfdi:Impuestos TotalImpuestosTrasladados="${factura.iva}">
-    <cfdi:Traslados>
-      <cfdi:Traslado Base="${factura.subtotal}" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.16" Importe="${factura.iva}"/>
-    </cfdi:Traslados>
-  </cfdi:Impuestos>
 </cfdi:Comprobante>`;
   }
 
@@ -278,6 +281,7 @@ export class FacturaService {
     });
   }
 
+  // TODO: ACTUALIZAR PARA CFDI 4.0 - Esta función necesita refactorización completa para nuevos campos
   async actualizarFactura(id: number, datos: Partial<Factura> & { conceptos?: ConceptoFacturaDTO[] }): Promise<Factura> {
     const factura = await this.facturaRepository.findOne({
       where: { id },
@@ -312,44 +316,37 @@ export class FacturaService {
           throw new Error(`Código SAT ${conceptoDTO.claveProductoServicio} no encontrado`);
         }
 
-        const importe = conceptoDTO.cantidad * conceptoDTO.precioUnitario;
+        const importe = conceptoDTO.cantidad * conceptoDTO.valorUnitario;
+        const descuento = conceptoDTO.descuento || 0;
         subtotal += importe;
-
-        let importeImpuesto = 0;
-        if (conceptoDTO.tieneImpuesto && conceptoDTO.tasaImpuesto) {
-          importeImpuesto = importe * (conceptoDTO.tasaImpuesto / 100);
-          totalIva += importeImpuesto;
-        }
+        totalIva += descuento; // Reutilizando variable para descuentos
 
         const concepto = this.conceptoRepository.create({
           factura,
-          catalogoSAT,
           claveProductoServicio: conceptoDTO.claveProductoServicio,
           descripcion: conceptoDTO.descripcion,
           cantidad: conceptoDTO.cantidad,
-          precioUnitario: conceptoDTO.precioUnitario,
+          valorUnitario: conceptoDTO.valorUnitario,
+          claveUnidad: conceptoDTO.claveUnidad,
           importe,
-          tieneImpuesto: conceptoDTO.tieneImpuesto,
-          tipoImpuesto: conceptoDTO.tipoImpuesto || '002',
-          tasaImpuesto: conceptoDTO.tasaImpuesto || 0,
-          importeImpuesto,
-          unidadMedida: conceptoDTO.unidadMedida || 'H87',
+          descuento,
+          objetoImpuestoClave: conceptoDTO.objetoImpuestoClave,
         });
 
         conceptosEntities.push(concepto);
       }
 
       datos.subtotal = subtotal;
-      datos.iva = totalIva;
-      datos.total = subtotal + totalIva;
+      datos.descuento = totalIva; // totalIva reutilizada como totalDescuento
+      datos.total = subtotal - totalIva;
       datos.saldoPendiente = datos.total - factura.montoPagado;
 
       factura.conceptos = conceptosEntities;
-    } else if (datos.subtotal !== undefined || datos.iva !== undefined) {
-      // Recalcular total si cambian subtotal o iva manualmente
+    } else if (datos.subtotal !== undefined || datos.descuento !== undefined) {
+      // Recalcular total si cambian subtotal o descuento manualmente
       const subtotal = datos.subtotal ?? factura.subtotal;
-      const iva = datos.iva ?? factura.iva;
-      datos.total = subtotal + iva;
+      const descuento = datos.descuento ?? factura.descuento;
+      datos.total = subtotal - descuento;
       datos.saldoPendiente = datos.total - factura.montoPagado;
     }
 

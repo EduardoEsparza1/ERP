@@ -9,12 +9,19 @@ export class FacturaController {
   async crearFactura(req: AuthRequest, res: Response): Promise<void> {
     try {
       const {
+        empresaId,
         clienteId,
         serie,
+        lugarExpedicion,
+        metodoPagoClave,
+        usoCFDIClave,
         fechaEmision,
         fechaVencimiento,
         conceptos,
         observaciones,
+        formaPagoClave,
+        monedaClave,
+        exportacion,
       } = req.body;
       const userId = req.user?.userId;
 
@@ -23,31 +30,39 @@ export class FacturaController {
         return;
       }
 
-      if (!clienteId || !serie || !fechaEmision || !fechaVencimiento || !conceptos || !Array.isArray(conceptos) || conceptos.length === 0) {
+      // Validar campos obligatorios CFDI 4.0
+      if (!empresaId || !clienteId || !serie || !lugarExpedicion || !metodoPagoClave || !usoCFDIClave || !fechaEmision || !conceptos || !Array.isArray(conceptos) || conceptos.length === 0) {
         res.status(400).json({
-          message: 'Campos requeridos: clienteId, serie, fechaEmision, fechaVencimiento, conceptos (array con al menos un concepto)',
+          message: 'Campos obligatorios CFDI 4.0: empresaId, clienteId, serie, lugarExpedicion, metodoPagoClave, usoCFDIClave, fechaEmision, conceptos (array)',
         });
         return;
       }
 
-      // Validar cada concepto
+      // Validar cada concepto (CFDI 4.0)
       for (const concepto of conceptos) {
-        if (!concepto.claveProductoServicio || !concepto.descripcion || !concepto.cantidad || !concepto.precioUnitario) {
+        if (!concepto.claveProductoServicio || !concepto.descripcion || !concepto.cantidad || !concepto.valorUnitario || !concepto.claveUnidad || !concepto.objetoImpuestoClave) {
           res.status(400).json({
-            message: 'Cada concepto debe tener: claveProductoServicio, descripcion, cantidad, precioUnitario',
+            message: 'Cada concepto CFDI 4.0 debe tener: claveProductoServicio, descripcion, cantidad, valorUnitario, claveUnidad, objetoImpuestoClave',
           });
           return;
         }
       }
 
       const factura = await facturaService.crearFactura(
+        empresaId,
         clienteId,
         serie,
+        lugarExpedicion,
+        metodoPagoClave,
+        usoCFDIClave,
         new Date(fechaEmision),
-        new Date(fechaVencimiento),
+        fechaVencimiento ? new Date(fechaVencimiento) : null,
         conceptos,
         observaciones || '',
-        userId
+        userId,
+        formaPagoClave,
+        monedaClave || 'MXN',
+        exportacion || '01'
       );
 
       res.status(201).json({ message: 'Factura creada exitosamente', factura });

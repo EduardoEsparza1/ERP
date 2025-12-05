@@ -5,10 +5,17 @@ export class ClienteService {
   private clienteRepository = AppDataSource.getRepository(Cliente);
 
   async crearCliente(
-    nombre: string,
     rfc: string,
     razonSocial: string,
-    direccion?: string,
+    regimenFiscalClave: string,
+    codigoPostal: string,
+    nombreComercial?: string,
+    calle?: string,
+    numeroExterior?: string,
+    numeroInterior?: string,
+    colonia?: string,
+    municipio?: string,
+    estado?: string,
     telefono?: string,
     email?: string
   ): Promise<Cliente> {
@@ -21,10 +28,17 @@ export class ClienteService {
     }
 
     const cliente = this.clienteRepository.create({
-      nombre,
       rfc: rfc.toUpperCase(),
       razonSocial,
-      direccion,
+      nombreComercial,
+      regimenFiscalClave,
+      codigoPostal,
+      calle,
+      numeroExterior,
+      numeroInterior,
+      colonia,
+      municipio,
+      estado,
       telefono,
       email,
       activo: true,
@@ -41,7 +55,7 @@ export class ClienteService {
     return await this.clienteRepository.find({
       where,
       relations: ['facturas'],
-      order: { nombre: 'ASC' },
+      order: { razonSocial: 'ASC' },
     });
   }
 
