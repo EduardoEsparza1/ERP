@@ -10,6 +10,7 @@ import finanzasRoutes from './routes/finanzas.routes';
 import clienteRoutes from './routes/cliente.routes';
 import facturaRoutes from './routes/factura.routes';
 import catalogoSATRoutes from './routes/catalogoSAT.routes';
+import catalogosRoutes from './routes/catalogos.routes';
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.use('/api/finanzas', finanzasRoutes);
 app.use('/api/clientes', clienteRoutes);
 app.use('/api/facturas', facturaRoutes);
 app.use('/api/catalogo-sat', catalogoSATRoutes);
+app.use('/api/catalogos', catalogosRoutes);
 
 // Ruta de prueba
 app.get('/api/health', (req: Request, res: Response) => {

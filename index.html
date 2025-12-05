@@ -43,6 +43,48 @@
                 username: '',
                 userData: null,
 
+                // Catálogos SAT
+                catalogos: null,
+                clientes: [],
+                empresas: [],
+
+                // Formulario de factura
+                factura: {
+                    empresaId: '',
+                    clienteId: '',
+                    serie: 'A',
+                    lugarExpedicion: '',
+                    metodoPagoClave: 'PUE',
+                    formaPagoClave: '01',
+                    usoCFDIClave: 'G03',
+                    monedaClave: 'MXN',
+                    tipoCambio: 1,
+                    exportacion: '01',
+                    fechaEmision: new Date().toISOString().split('T')[0],
+                    fechaVencimiento: '',
+                    conceptos: [],
+                    observaciones: ''
+                },
+
+                // Concepto temporal
+                conceptoTemp: {
+                    claveProductoServicio: '',
+                    descripcion: '',
+                    cantidad: 1,
+                    claveUnidad: 'E48',
+                    valorUnitario: 0,
+                    descuento: 0,
+                    objetoImpuestoClave: '02'
+                },
+
+                // Totales
+                totales: {
+                    subtotal: 0,
+                    descuento: 0,
+                    impuestos: 0,
+                    total: 0
+                },
+
                 // Inicialización
                 init() {
                     // Verificar si hay token guardado
@@ -105,6 +147,130 @@
                     this.userData = null;
                     this.username = '';
                     this.currentSection = 'dashboard';
+                },
+
+                // Cargar catálogos SAT
+                async cargarCatalogos() {
+                    if (this.catalogos) return; // Ya cargados
+
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('http://localhost:3000/api/catalogos/todos', {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const data = await response.json();
+                        this.catalogos = data.catalogos;
+
+                        // Cargar clientes y empresas
+                        const [clientesRes, empresasRes] = await Promise.all([
+                            fetch('http://localhost:3000/api/catalogos/clientes', {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            }),
+                            fetch('http://localhost:3000/api/catalogos/empresas', {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            })
+                        ]);
+
+                        this.clientes = (await clientesRes.json()).clientes || [];
+                        this.empresas = (await empresasRes.json()).empresas || [];
+                    } catch (error) {
+                        console.error('Error al cargar catálogos:', error);
+                        alert('Error al cargar catálogos SAT');
+                    }
+                },
+
+                // Agregar concepto
+                agregarConcepto() {
+                    if (!this.conceptoTemp.claveProductoServicio || !this.conceptoTemp.descripcion ||
+                        !this.conceptoTemp.cantidad || !this.conceptoTemp.valorUnitario) {
+                        alert('Complete todos los campos del concepto');
+                        return;
+                    }
+
+                    const importe = this.conceptoTemp.cantidad * this.conceptoTemp.valorUnitario;
+
+                    this.factura.conceptos.push({
+                        ...this.conceptoTemp,
+                        importe: importe - this.conceptoTemp.descuento
+                    });
+
+                    // Limpiar formulario temporal
+                    this.conceptoTemp = {
+                        claveProductoServicio: '',
+                        descripcion: '',
+                        cantidad: 1,
+                        claveUnidad: 'E48',
+                        valorUnitario: 0,
+                        descuento: 0,
+                        objetoImpuestoClave: '02'
+                    };
+
+                    this.calcularTotales();
+                },
+
+                // Eliminar concepto
+                eliminarConcepto(index) {
+                    this.factura.conceptos.splice(index, 1);
+                    this.calcularTotales();
+                },
+
+                // Calcular totales (IVA 16%)
+                calcularTotales() {
+                    let subtotal = 0;
+                    let descuento = 0;
+
+                    this.factura.conceptos.forEach(c => {
+                        const importeBruto = c.cantidad * c.valorUnitario;
+                        subtotal += importeBruto;
+                        descuento += c.descuento || 0;
+                    });
+
+                    const baseImponible = subtotal - descuento;
+                    const iva = baseImponible * 0.16;
+
+                    this.totales = {
+                        subtotal: subtotal.toFixed(2),
+                        descuento: descuento.toFixed(2),
+                        impuestos: iva.toFixed(2),
+                        total: (baseImponible + iva).toFixed(2)
+                    };
+                },
+
+                // Guardar factura
+                async guardarFactura() {
+                    if (!this.factura.empresaId || !this.factura.clienteId ||
+                        !this.factura.serie || !this.factura.lugarExpedicion ||
+                        this.factura.conceptos.length === 0) {
+                        alert('Complete todos los campos obligatorios y agregue al menos un concepto');
+                        return;
+                    }
+
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('http://localhost:3000/api/facturas', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify(this.factura)
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(data.message || 'Error al crear factura');
+                        }
+
+                        alert('Factura creada exitosamente');
+
+                        // Limpiar formulario
+                        this.factura.conceptos = [];
+                        this.totales = { subtotal: 0, descuento: 0, impuestos: 0, total: 0 };
+
+                    } catch (error) {
+                        alert(error.message || 'Error al guardar factura');
+                    }
                 }
             }
         }
@@ -452,11 +618,320 @@
                 </div>
 
                 <!-- Otras secciones (Facturas, Clientes, etc.) -->
-                <div x-show="currentSection === 'facturas'" class="space-y-4">
-                    <h2 class="text-2xl font-bold text-gray-800">Módulo de Facturas</h2>
-                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-                        <p class="text-gray-600">Contenido del módulo de facturas en desarrollo...</p>
+                <div x-show="currentSection === 'facturas'" x-init="cargarCatalogos()" class="space-y-4">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800">Nueva Factura CFDI 4.0</h2>
+                        <button @click="guardarFactura" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center space-x-2">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            <span>Guardar Factura</span>
+                        </button>
                     </div>
+
+                    <form @submit.prevent="guardarFactura" class="space-y-6">
+
+                        <!-- Datos Generales -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i data-lucide="file-text" class="w-5 h-5 mr-2 text-blue-600"></i>
+                                Datos Generales
+                            </h3>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <!-- Empresa Emisor -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Empresa Emisor <span class="text-red-500">*</span>
+                                    </label>
+                                    <select x-model="factura.empresaId" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Seleccione una empresa</option>
+                                        <template x-for="empresa in empresas" :key="empresa.id">
+                                            <option :value="empresa.id" x-text="`${empresa.razonSocial} (${empresa.rfc})`"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <!-- Cliente Receptor -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Cliente Receptor <span class="text-red-500">*</span>
+                                    </label>
+                                    <select x-model="factura.clienteId" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Seleccione un cliente</option>
+                                        <template x-for="cliente in clientes" :key="cliente.id">
+                                            <option :value="cliente.id" x-text="`${cliente.razonSocial} (${cliente.rfc})`"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <!-- Serie -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Serie <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" x-model="factura.serie" required maxlength="10"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <!-- Lugar de Expedición -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Lugar Expedición (CP) <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" x-model="factura.lugarExpedicion" required maxlength="5" pattern="[0-9]{5}"
+                                           placeholder="01000"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <!-- Fecha Emisión -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Fecha Emisión <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="date" x-model="factura.fechaEmision" required
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <!-- Fecha Vencimiento -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Fecha Vencimiento
+                                    </label>
+                                    <input type="date" x-model="factura.fechaVencimiento"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Datos CFDI 4.0 -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i data-lucide="shield-check" class="w-5 h-5 mr-2 text-green-600"></i>
+                                Datos CFDI 4.0
+                            </h3>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <!-- Método de Pago -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Método de Pago <span class="text-red-500">*</span>
+                                    </label>
+                                    <select x-model="factura.metodoPagoClave" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <template x-if="catalogos">
+                                            <template x-for="metodo in catalogos.metodosPago" :key="metodo.clave">
+                                                <option :value="metodo.clave" x-text="`${metodo.clave} - ${metodo.descripcion}`"></option>
+                                            </template>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <!-- Forma de Pago -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Forma de Pago
+                                    </label>
+                                    <select x-model="factura.formaPagoClave" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Seleccione</option>
+                                        <template x-if="catalogos">
+                                            <template x-for="forma in catalogos.formasPago" :key="forma.clave">
+                                                <option :value="forma.clave" x-text="`${forma.clave} - ${forma.descripcion}`"></option>
+                                            </template>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <!-- Uso CFDI -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Uso CFDI <span class="text-red-500">*</span>
+                                    </label>
+                                    <select x-model="factura.usoCFDIClave" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <template x-if="catalogos">
+                                            <template x-for="uso in catalogos.usosCFDI" :key="uso.clave">
+                                                <option :value="uso.clave" x-text="`${uso.clave} - ${uso.descripcion}`"></option>
+                                            </template>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <!-- Moneda -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Moneda <span class="text-red-500">*</span>
+                                    </label>
+                                    <select x-model="factura.monedaClave" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <template x-if="catalogos">
+                                            <template x-for="moneda in catalogos.monedas" :key="moneda.clave">
+                                                <option :value="moneda.clave" x-text="`${moneda.clave} - ${moneda.descripcion}`"></option>
+                                            </template>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <!-- Tipo de Cambio -->
+                                <div x-show="factura.monedaClave !== 'MXN'">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Tipo de Cambio <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="number" x-model="factura.tipoCambio" step="0.000001" min="0"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <!-- Exportación -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Exportación <span class="text-red-500">*</span>
+                                    </label>
+                                    <select x-model="factura.exportacion" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="01">01 - No aplica</option>
+                                        <option value="02">02 - Definitiva</option>
+                                        <option value="03">03 - Temporal</option>
+                                        <option value="04">04 - Definitiva con clave A1</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Conceptos -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i data-lucide="package" class="w-5 h-5 mr-2 text-purple-600"></i>
+                                Conceptos
+                            </h3>
+
+                            <!-- Formulario agregar concepto -->
+                            <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div class="lg:col-span-2">
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Descripción</label>
+                                        <input type="text" x-model="conceptoTemp.descripcion"
+                                               placeholder="Descripción del producto/servicio"
+                                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Clave SAT</label>
+                                        <input type="text" x-model="conceptoTemp.claveProductoServicio"
+                                               placeholder="84111506"
+                                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Cantidad</label>
+                                        <input type="number" x-model="conceptoTemp.cantidad" min="0" step="0.01"
+                                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Clave Unidad</label>
+                                        <select x-model="conceptoTemp.claveUnidad" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <template x-if="catalogos">
+                                                <template x-for="unidad in catalogos.clavesUnidad" :key="unidad.clave">
+                                                    <option :value="unidad.clave" x-text="`${unidad.clave} - ${unidad.nombre}`"></option>
+                                                </template>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Valor Unitario</label>
+                                        <input type="number" x-model="conceptoTemp.valorUnitario" min="0" step="0.01"
+                                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Descuento</label>
+                                        <input type="number" x-model="conceptoTemp.descuento" min="0" step="0.01"
+                                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Objeto Impuesto</label>
+                                        <select x-model="conceptoTemp.objetoImpuestoClave" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <template x-if="catalogos">
+                                                <template x-for="obj in catalogos.objetosImpuesto" :key="obj.clave">
+                                                    <option :value="obj.clave" x-text="`${obj.clave} - ${obj.descripcion}`"></option>
+                                                </template>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-end">
+                                        <button type="button" @click="agregarConcepto"
+                                                class="w-full px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition flex items-center justify-center space-x-2">
+                                            <i data-lucide="plus" class="w-4 h-4"></i>
+                                            <span>Agregar</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tabla de conceptos -->
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-gray-100 border-b">
+                                        <tr>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">#</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Descripción</th>
+                                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">Cantidad</th>
+                                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">P. Unitario</th>
+                                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">Descuento</th>
+                                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-700">Importe</th>
+                                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-700">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="(concepto, index) in factura.conceptos" :key="index">
+                                            <tr class="border-b hover:bg-gray-50">
+                                                <td class="px-4 py-2 text-gray-900" x-text="index + 1"></td>
+                                                <td class="px-4 py-2 text-gray-900" x-text="concepto.descripcion"></td>
+                                                <td class="px-4 py-2 text-right text-gray-900" x-text="concepto.cantidad"></td>
+                                                <td class="px-4 py-2 text-right text-gray-900" x-text="`$${concepto.valorUnitario.toFixed(2)}`"></td>
+                                                <td class="px-4 py-2 text-right text-gray-900" x-text="`$${concepto.descuento.toFixed(2)}`"></td>
+                                                <td class="px-4 py-2 text-right font-medium text-gray-900" x-text="`$${concepto.importe.toFixed(2)}`"></td>
+                                                <td class="px-4 py-2 text-center">
+                                                    <button type="button" @click="eliminarConcepto(index)"
+                                                            class="text-red-600 hover:text-red-800">
+                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-if="factura.conceptos.length === 0">
+                                            <tr>
+                                                <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                                                    No hay conceptos agregados
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Totales -->
+                            <div class="mt-6 flex justify-end">
+                                <div class="w-full md:w-1/2 lg:w-1/3 space-y-2">
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-gray-600">Subtotal:</span>
+                                        <span class="font-medium" x-text="`$${totales.subtotal}`"></span>
+                                    </div>
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-gray-600">Descuento:</span>
+                                        <span class="font-medium text-red-600" x-text="`-$${totales.descuento}`"></span>
+                                    </div>
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-gray-600">IVA (16%):</span>
+                                        <span class="font-medium" x-text="`$${totales.impuestos}`"></span>
+                                    </div>
+                                    <div class="flex justify-between text-lg font-bold border-t pt-2">
+                                        <span>Total:</span>
+                                        <span class="text-blue-600" x-text="`$${totales.total}`"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Observaciones -->
+                        <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Observaciones</h3>
+                            <textarea x-model="factura.observaciones" rows="3"
+                                      placeholder="Observaciones adicionales..."
+                                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                        </div>
+
+                    </form>
                 </div>
 
                 <div x-show="currentSection === 'clientes'" class="space-y-4">
