@@ -5,23 +5,77 @@ import { ClienteService } from '../services/cliente.service';
 const clienteService = new ClienteService();
 
 export class ClienteController {
+  private validarRFC(rfc: string): boolean {
+    const rfcRegex = /^([A-Z&\u00D1]{3,4})\d{6}([A-Z\d]{3})$/i;
+    return rfcRegex.test(rfc);
+  }
+
+  private validarCodigoPostal(codigoPostal: string): boolean {
+    return /^\d{5}$/.test(codigoPostal);
+  }
+
   async crearCliente(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { nombre, rfc, razonSocial, direccion, telefono, email } = req.body;
+      const {
+        rfc,
+        razonSocial,
+        regimenFiscalClave,
+        codigoPostal,
+        nombreComercial,
+        calle,
+        numeroExterior,
+        numeroInterior,
+        colonia,
+        municipio,
+        estado,
+        pais,
+        telefono,
+        celular,
+        email,
+        diasCredito,
+        limiteCredito,
+        contactoPrincipal,
+        notas,
+      } = req.body;
 
-      if (!nombre || !rfc || !razonSocial) {
-        res.status(400).json({ message: 'Campos requeridos: nombre, rfc, razonSocial' });
+      if (!rfc || !razonSocial || !regimenFiscalClave || !codigoPostal) {
+        res.status(400).json({
+          message: 'Campos requeridos: rfc, razonSocial, regimenFiscalClave, codigoPostal',
+        });
         return;
       }
 
-      const cliente = await clienteService.crearCliente(
-        nombre,
+      if (!this.validarRFC(rfc)) {
+        res.status(400).json({ message: 'RFC inválido' });
+        return;
+      }
+
+      if (!this.validarCodigoPostal(codigoPostal)) {
+        res.status(400).json({ message: 'Código postal inválido. Debe tener 5 dígitos' });
+        return;
+      }
+
+      const cliente = await clienteService.crearCliente({
         rfc,
         razonSocial,
-        direccion,
+        regimenFiscalClave,
+        codigoPostal,
+        nombreComercial,
+        calle,
+        numeroExterior,
+        numeroInterior,
+        colonia,
+        municipio,
+        estado,
+        pais,
         telefono,
-        email
-      );
+        email,
+        celular,
+        diasCredito,
+        limiteCredito,
+        contactoPrincipal,
+        notas,
+      });
 
       res.status(201).json({ message: 'Cliente creado exitosamente', cliente });
     } catch (error) {
@@ -66,6 +120,21 @@ export class ClienteController {
       const id = parseInt(req.params.id);
       const datos = req.body;
 
+      if (Number.isNaN(id)) {
+        res.status(400).json({ message: 'ID de cliente inválido' });
+        return;
+      }
+
+      if (datos.rfc && !this.validarRFC(datos.rfc)) {
+        res.status(400).json({ message: 'RFC inválido' });
+        return;
+      }
+
+      if (datos.codigoPostal && !this.validarCodigoPostal(datos.codigoPostal)) {
+        res.status(400).json({ message: 'Código postal inválido. Debe tener 5 dígitos' });
+        return;
+      }
+
       const cliente = await clienteService.actualizarCliente(id, datos);
       res.json({ message: 'Cliente actualizado exitosamente', cliente });
     } catch (error) {
@@ -78,6 +147,12 @@ export class ClienteController {
   async eliminarCliente(req: AuthRequest, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
+
+      if (Number.isNaN(id)) {
+        res.status(400).json({ message: 'ID de cliente inválido' });
+        return;
+      }
+
       await clienteService.eliminarCliente(id);
       res.json({ message: 'Cliente eliminado exitosamente' });
     } catch (error) {
@@ -90,6 +165,12 @@ export class ClienteController {
   async desactivarCliente(req: AuthRequest, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
+
+      if (Number.isNaN(id)) {
+        res.status(400).json({ message: 'ID de cliente inválido' });
+        return;
+      }
+
       const cliente = await clienteService.desactivarCliente(id);
       res.json({ message: 'Cliente desactivado exitosamente', cliente });
     } catch (error) {
